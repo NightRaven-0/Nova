@@ -1,4 +1,4 @@
-# download_model.py
+
 import os
 import requests
 import tarfile
