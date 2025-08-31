@@ -1,0 +1,1 @@
+# Loads .env + constants (API keys, audio settings, assistant name)
