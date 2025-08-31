@@ -20,7 +20,7 @@ def listen_and_transcribe():
 
     with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=CHUNK_SIZE,
                            dtype='int16', channels=1, callback=callback):
-        print("🎤 Listening... speak now.")
+        print(" Listening... speak now.")
         while True:
             data = q.get()
             if rec.AcceptWaveform(data):
