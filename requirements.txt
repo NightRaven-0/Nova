@@ -1,0 +1,6 @@
+elevenlabs>=1.6.1
+python-dotenv>=1.0.1
+sounddevice>=0.4.7
+vosk>=0.3.45
+pydub>=0.25.1
+openai>=1.40.0   # optional (for cloud LLM)
