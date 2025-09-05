@@ -1,4 +1,3 @@
-# config.py
 # Loads .env + constants (API keys, audio settings, assistant name)
 
 import os
@@ -24,11 +23,11 @@ if not ELEVENLABS_API_KEY:
 VOSK_MODEL_PATH = os.path.join("models", "vosk-model-small-en-us-0.15")
 
 # Audio settings
-SAMPLE_RATE = 16000        # 16 kHz (good for STT models like Vosk/Whisper)
-CHUNK_SIZE = 4000          # Buffer size for recording
+SAMPLE_RATE = 16000 
+CHUNK_SIZE = 4000 
 
 # Voice settings
-VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "Shelby")  # Default to Shelby if not set
+VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "Shelby") 
 
 # Feature toggles
 # USE_CLOUD_STT: 0 = Use Vosk (offline), 1 = Use Whisper API (online)
