@@ -14,16 +14,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 if not OPENAI_API_KEY:
-    raise ValueError("❌ Missing OPENAI_API_KEY in .env file")
+    raise ValueError("Missing OPENAI_API_KEY in .env file")
 
 if not ELEVENLABS_API_KEY:
-    raise ValueError("❌ Missing ELEVENLABS_API_KEY in .env file")
+    raise ValueError("Missing ELEVENLABS_API_KEY in .env file")
 
 # Paths
 VOSK_MODEL_PATH = os.path.join("models", "vosk-model-small-en-us-0.15")
 
 # Audio settings
-SAMPLE_RATE = 16000 
+SAMPLE_RATE = 16000
 CHUNK_SIZE = 4000 
 
 # Voice settings
