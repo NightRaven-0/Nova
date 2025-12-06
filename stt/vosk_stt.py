@@ -17,13 +17,16 @@ rec = vosk.KaldiRecognizer(model, SAMPLE_RATE)
 q = queue.Queue()
 
 def callback(indata, frames, time, status):
+    print(" Received audio...")
     if status:
         print(status)
     q.put(bytes(indata))
 
 def listen_and_transcribe():
     """Continuously listen on the mic until user speaks a phrase."""
+    mic_index = 3
     with sd.RawInputStream(
+        device = mic_index,
         samplerate=SAMPLE_RATE,
         blocksize=CHUNK_SIZE,
         dtype='int16',

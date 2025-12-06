@@ -1,21 +1,24 @@
+# tts/elevenlabs_tts.py
 # Speaking (text → ElevenLabs voice)
-import os
-from elevenlabs import ElevenLabs
+
+from elevenlabs import generate, play, set_api_key
 from config import ELEVENLABS_API_KEY, VOICE_ID
 
-# Initialize ElevenLabs client
-client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+# Configure ElevenLabs API
+set_api_key(ELEVENLABS_API_KEY)
 
-def speak(text: str):
+def speak(text: str) -> None:
     """Convert text to speech using ElevenLabs."""
-    if not text.strip():
+    text = text.strip()
+    if not text:
         return
-    
-    audio = client.generate(
-        text=text,
-        voice=VOICE_ID,
-        model="eleven_multilingual_v2"
-    )
 
-    # Stream output directly to speakers
-    client.stream(audio)
+    try:
+        audio = generate(
+            text=text,
+            voice=VOICE_ID,                # e.g. "Shelby"
+            model="eleven_multilingual_v2" # good general model
+        )
+        play(audio)
+    except Exception as e:
+        print(f"[TTS error] {e}")
