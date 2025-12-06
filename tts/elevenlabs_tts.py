@@ -1,11 +1,13 @@
 # tts/elevenlabs_tts.py
-# Speaking (text → ElevenLabs voice)
+# Speaking (text → ElevenLabs voice) using the new SDK
 
-from elevenlabs import generate, play, set_api_key
+import os
+from elevenlabs.client import ElevenLabs
+from elevenlabs.play import play
 from config import ELEVENLABS_API_KEY, VOICE_ID
 
-# Configure ElevenLabs API
-set_api_key(ELEVENLABS_API_KEY)
+# Create client once
+client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
 def speak(text: str) -> None:
     """Convert text to speech using ElevenLabs."""
@@ -14,10 +16,11 @@ def speak(text: str) -> None:
         return
 
     try:
-        audio = generate(
+        audio = client.text_to_speech.convert(
             text=text,
-            voice=VOICE_ID,                # e.g. "Shelby"
-            model="eleven_multilingual_v2" # good general model
+            voice_id=VOICE_ID,               # must be a *voice ID*, see note below
+            model_id="eleven_multilingual_v2",
+            output_format="mp3_44100_128",   # works with play()
         )
         play(audio)
     except Exception as e:
