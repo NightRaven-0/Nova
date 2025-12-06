@@ -6,6 +6,14 @@ import vosk
 import json
 from config import SAMPLE_RATE, CHUNK_SIZE, VOSK_MODEL_PATH
 
+# -------------------------------
+# Load model ONCE (big performance improvement)
+# -------------------------------
+print("Loading Vosk STT model... (this happens only once)")
+model = vosk.Model(VOSK_MODEL_PATH)
+rec = vosk.KaldiRecognizer(model, SAMPLE_RATE)
+
+# Recording queue
 q = queue.Queue()
 
 def callback(indata, frames, time, status):
@@ -14,13 +22,15 @@ def callback(indata, frames, time, status):
     q.put(bytes(indata))
 
 def listen_and_transcribe():
-    """Continuously listen on the mic until user speaks a phrase"""
-    model = vosk.Model(VOSK_MODEL_PATH)
-    rec = vosk.KaldiRecognizer(model, SAMPLE_RATE)
-
-    with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=CHUNK_SIZE,
-                           dtype='int16', channels=1, callback=callback):
-        print(" Listening... speak now.")
+    """Continuously listen on the mic until user speaks a phrase."""
+    with sd.RawInputStream(
+        samplerate=SAMPLE_RATE,
+        blocksize=CHUNK_SIZE,
+        dtype='int16',
+        channels=1,
+        callback=callback,
+    ):
+        print("Listening... speak now.")
         while True:
             data = q.get()
             if rec.AcceptWaveform(data):
