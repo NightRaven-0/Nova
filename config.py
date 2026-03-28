@@ -38,3 +38,33 @@ USE_TTS = str(os.getenv("USE_TTS", "1")) == "1"
 
 # USE_CLOUD_LLM: 0 = Use local GPT-4, 1 = Use OpenAI API (cloud)
 USE_CLOUD_LLM = str(os.getenv("USE_CLOUD_LLM", "0")) == "1"
+
+# ---------------------------
+# Phase 1: VAE representation
+# ---------------------------
+
+USE_VAE_TEXT_CLEANER = str(os.getenv("USE_VAE_TEXT_CLEANER", "0")) == "1"
+
+VAE_MODEL_PATH = os.getenv(
+    "VAE_MODEL_PATH",
+    os.path.join("models", "phase1_text_vae.pt"),
+)
+
+VAE_BANK_PATH = os.getenv(
+    "VAE_BANK_PATH",
+    os.path.join("models", "phase1_reconstruction_bank.json"),
+)
+
+VAE_LOG_PATH = os.getenv(
+    "VAE_LOG_PATH",
+    os.path.join("logs", "vae_interactions.jsonl"),
+)
+
+VAE_SENTENCE_MODEL = os.getenv(
+    "VAE_SENTENCE_MODEL",
+    "sentence-transformers/all-MiniLM-L6-v2",
+)
+
+VAE_SIMILARITY_THRESHOLD = float(
+    os.getenv("VAE_SIMILARITY_THRESHOLD", "0.55")
+)
