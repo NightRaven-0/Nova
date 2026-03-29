@@ -5,6 +5,14 @@ import os
 from elevenlabs.client import ElevenLabs
 from elevenlabs.play import play
 from config import ELEVENLABS_API_KEY, VOICE_ID
+from config import LOCAL_ONLY_MODE
+
+def speak(text: str):
+    if LOCAL_ONLY_MODE:
+        print(f"[LOCAL_TTS_DISABLED] {text}")
+        return
+
+    # existing ElevenLabs code below
 
 # Create client once
 client = ElevenLabs(api_key=ELEVENLABS_API_KEY)

@@ -1,6 +1,13 @@
 # Reply generation (OpenAI or local fallback)
 from openai import OpenAI
 from config import OPENAI_API_KEY, ASSISTANT_NAME, USE_CLOUD_LLM
+from config import LOCAL_ONLY_MODE
+
+def ask_gpt(prompt: str) -> str:
+    if LOCAL_ONLY_MODE:
+        return f"[LOCAL_STUB_REPLY] I heard: {prompt}"
+
+    # existing GPT code below
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
