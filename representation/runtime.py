@@ -8,7 +8,10 @@ from config import (
     VAE_LOG_PATH,
     VAE_MODEL_PATH,
     VAE_SENTENCE_MODEL,
-    VAE_SIMILARITY_THRESHOLD,
+    RAW_MATCH_THRESHOLD,
+    RAW_MARGIN_THRESHOLD,
+    VAE_MATCH_THRESHOLD,
+    VAE_MARGIN_THRESHOLD,
 )
 from .vae_pipeline import ReconstructionResult, VAETextProcessor
 
@@ -18,10 +21,12 @@ class PassthroughProcessor:
         raw_text = (raw_text or "").strip()
         return ReconstructionResult(
             raw_text=raw_text,
-            reconstructed_text=raw_text,
+            cleaned_text=raw_text,
+            vae_decoded_text=raw_text,
             latent_vector=[],
             reconstruction_loss=0.0,
-            nearest_score=1.0,
+            raw_match_score=1.0,
+            vae_match_score=1.0,
             used_fallback=True,
         )
 
@@ -46,7 +51,10 @@ def build_phase1_processor():
             bank_path=str(bank_path),
             log_path=VAE_LOG_PATH,
             model_name=VAE_SENTENCE_MODEL,
-            similarity_threshold=VAE_SIMILARITY_THRESHOLD,
+            raw_similarity_threshold=RAW_MATCH_THRESHOLD,
+            raw_margin_threshold=RAW_MARGIN_THRESHOLD,
+            vae_similarity_threshold=VAE_MATCH_THRESHOLD,
+            vae_margin_threshold=VAE_MARGIN_THRESHOLD,
         )
         print("[Phase1] VAE cleaner loaded successfully.")
         return processor

@@ -22,6 +22,8 @@ if not ELEVENLABS_API_KEY:
 # Paths
 VOSK_MODEL_PATH = os.path.join("models", "vosk-model-small-en-us-0.15")
 
+LOCAL_ONLY_MODE = str(os.getenv("LOCAL_ONLY_MODE", "1")) == "1"
+
 # Audio settings
 SAMPLE_RATE = 16000
 CHUNK_SIZE = 4000 
@@ -66,5 +68,11 @@ VAE_SENTENCE_MODEL = os.getenv(
 )
 
 VAE_SIMILARITY_THRESHOLD = float(
-    os.getenv("VAE_SIMILARITY_THRESHOLD", "0.55")
+    os.getenv("VAE_SIMILARITY_THRESHOLD", "0.75")
 )
+
+RAW_MATCH_THRESHOLD = float(os.getenv("RAW_MATCH_THRESHOLD", "0.78"))
+RAW_MARGIN_THRESHOLD = float(os.getenv("RAW_MARGIN_THRESHOLD", "0.10"))
+
+VAE_MATCH_THRESHOLD = float(os.getenv("VAE_MATCH_THRESHOLD", "0.75"))
+VAE_MARGIN_THRESHOLD = float(os.getenv("VAE_MARGIN_THRESHOLD", "0.08"))

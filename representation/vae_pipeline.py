@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import json
 
 import numpy as np
@@ -16,10 +16,12 @@ from .text_vae import TextEmbeddingVAE, vae_loss
 @dataclass
 class ReconstructionResult:
     raw_text: str
-    reconstructed_text: str
+    cleaned_text: str
+    vae_decoded_text: str
     latent_vector: List[float]
     reconstruction_loss: float
-    nearest_score: float
+    raw_match_score: float
+    vae_match_score: float
     used_fallback: bool
 
 
@@ -31,7 +33,10 @@ class VAETextProcessor:
         log_path: str = "logs/vae_interactions.jsonl",
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         device: Optional[str] = None,
-        similarity_threshold: float = 0.55,
+        raw_similarity_threshold: float = 0.78,
+        raw_margin_threshold: float = 0.10,
+        vae_similarity_threshold: float = 0.75,
+        vae_margin_threshold: float = 0.08,
     ):
         self.device = torch.device(
             device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,7 +44,11 @@ class VAETextProcessor:
         self.model_path = Path(model_path)
         self.bank_path = Path(bank_path)
         self.log_path = Path(log_path)
-        self.similarity_threshold = similarity_threshold
+
+        self.raw_similarity_threshold = raw_similarity_threshold
+        self.raw_margin_threshold = raw_margin_threshold
+        self.vae_similarity_threshold = vae_similarity_threshold
+        self.vae_margin_threshold = vae_margin_threshold
 
         self.embedder = SentenceEmbedder(model_name=model_name)
         self.model = self._load_model()
@@ -64,20 +73,42 @@ class VAETextProcessor:
         payload["embeddings"] = np.asarray(payload["embeddings"], dtype=np.float32)
         return payload
 
+    def _nearest(self, embedding: np.ndarray) -> Tuple[str, float, float]:
+        bank_embeddings = self.reconstruction_bank["embeddings"]
+        bank_texts = self.reconstruction_bank["texts"]
+
+        sims = bank_embeddings @ embedding
+        order = np.argsort(sims)[::-1]
+
+        best_idx = int(order[0])
+        second_idx = int(order[1]) if len(order) > 1 else best_idx
+
+        best_score = float(sims[best_idx])
+        second_score = float(sims[second_idx])
+        margin = best_score - second_score
+
+        return bank_texts[best_idx], best_score, margin
+
+    def _is_confident(self, score: float, margin: float, score_th: float, margin_th: float) -> bool:
+        return score >= score_th and margin >= margin_th
+
     def process(self, raw_text: str) -> ReconstructionResult:
         raw_text = (raw_text or "").strip()
         if not raw_text:
             return ReconstructionResult(
                 raw_text="",
-                reconstructed_text="",
+                cleaned_text="",
+                vae_decoded_text="",
                 latent_vector=[],
                 reconstruction_loss=0.0,
-                nearest_score=0.0,
+                raw_match_score=0.0,
+                vae_match_score=0.0,
                 used_fallback=True,
             )
 
-        input_embedding = self.embedder.encode_one(raw_text)
-        x = torch.from_numpy(input_embedding).float().unsqueeze(0).to(self.device)
+        raw_embedding = self.embedder.encode_one(raw_text)
+
+        x = torch.from_numpy(raw_embedding).float().unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             output = self.model(x)
@@ -89,33 +120,49 @@ class VAETextProcessor:
             )
 
             reconstructed_embedding = output.reconstruction.squeeze(0)
-            reconstructed_embedding = F.normalize(
-                reconstructed_embedding,
-                dim=0,
-            ).cpu().numpy().astype(np.float32)
+            reconstructed_embedding = F.normalize(reconstructed_embedding, dim=0)
+            reconstructed_embedding = reconstructed_embedding.cpu().numpy().astype(np.float32)
 
             latent = output.mu.squeeze(0).cpu().numpy().astype(float).tolist()
 
-        bank_embeddings = self.reconstruction_bank["embeddings"]
-        bank_texts = self.reconstruction_bank["texts"]
+        raw_best_text, raw_best_score, raw_margin = self._nearest(raw_embedding)
+        vae_best_text, vae_best_score, vae_margin = self._nearest(reconstructed_embedding)
 
-        sims = bank_embeddings @ reconstructed_embedding
-        best_idx = int(np.argmax(sims))
-        nearest_score = float(sims[best_idx])
-
-        reconstructed_text = (
-            bank_texts[best_idx]
-            if nearest_score >= self.similarity_threshold
-            else raw_text
+        raw_confident = self._is_confident(
+            raw_best_score,
+            raw_margin,
+            self.raw_similarity_threshold,
+            self.raw_margin_threshold,
         )
-        used_fallback = nearest_score < self.similarity_threshold
+
+        vae_confident = self._is_confident(
+            vae_best_score,
+            vae_margin,
+            self.vae_similarity_threshold,
+            self.vae_margin_threshold,
+        )
+
+        # Safe runtime choice:
+        # Prefer direct semantic match from the raw text.
+        # Only fall back to raw text when confidence is insufficient.
+        if raw_confident:
+            cleaned_text = raw_best_text
+            used_fallback = False
+        else:
+            cleaned_text = raw_text
+            used_fallback = True
+
+        # VAE output is logged, but not trusted for live routing unless you later promote it.
+        vae_decoded_text = vae_best_text if vae_confident else raw_text
 
         result = ReconstructionResult(
             raw_text=raw_text,
-            reconstructed_text=reconstructed_text,
+            cleaned_text=cleaned_text,
+            vae_decoded_text=vae_decoded_text,
             latent_vector=latent,
             reconstruction_loss=float(recon_loss.item()),
-            nearest_score=nearest_score,
+            raw_match_score=raw_best_score,
+            vae_match_score=vae_best_score,
             used_fallback=used_fallback,
         )
 

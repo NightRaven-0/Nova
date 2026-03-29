@@ -1,0 +1,28 @@
+open youtube
+open google
+open github
+open spotify
+open browser
+open file explorer
+search youtube
+search google
+play music
+play some music
+pause music
+stop music
+what time is it
+what is the weather today
+tell me a joke
+summarize this text
+write an email draft
+remember this for later
+what did i just say
+restart my pc
+shutdown my pc
+lock my pc
+hello
+hi
+how are you
+who are you
+thank you
+goodbye

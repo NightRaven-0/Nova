@@ -48,14 +48,23 @@ def main():
             result = processor.process(noisy)
 
             total += 1
-            if result.reconstructed_text == clean_text:
+
+            # ✅ Use cleaned_text as primary output
+            if result.cleaned_text == clean_text:
                 exact += 1
+
             if result.used_fallback:
                 fallbacks += 1
 
             if len(examples) < 10:
                 examples.append(
-                    (noisy, clean_text, result.reconstructed_text, result.nearest_score)
+                    (
+                        noisy,
+                        clean_text,
+                        result.cleaned_text,
+                        result.raw_match_score,
+                        result.vae_match_score,
+                    )
                 )
 
     accuracy = exact / max(1, total)
@@ -66,10 +75,11 @@ def main():
     print(f"fallback_rate={fallback_rate:.4f}")
     print("examples:")
 
-    for noisy, clean, recon, score in examples:
+    for noisy, clean, recon, raw_score, vae_score in examples:
         print(f"  noisy={noisy!r}")
         print(f"  clean={clean!r}")
-        print(f"  recon={recon!r} score={score:.4f}")
+        print(f"  cleaned={recon!r}")
+        print(f"  raw_score={raw_score:.4f} vae_score={vae_score:.4f}")
         print("  ---")
 
 
