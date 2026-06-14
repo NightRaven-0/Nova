@@ -4,7 +4,7 @@ import queue
 import sounddevice as sd
 import vosk
 import json
-from config import SAMPLE_RATE, CHUNK_SIZE, VOSK_MODEL_PATH
+from config import SAMPLE_RATE, CHUNK_SIZE, VOSK_MODEL_PATH, MIC_INDEX
 
 # -------------------------------
 # Load model ONCE (big performance improvement)
@@ -17,16 +17,14 @@ rec = vosk.KaldiRecognizer(model, SAMPLE_RATE)
 q = queue.Queue()
 
 def callback(indata, frames, time, status):
-    print(" Received audio...")
     if status:
         print(status)
     q.put(bytes(indata))
 
 def listen_and_transcribe():
     """Continuously listen on the mic until user speaks a phrase."""
-    mic_index = 3
     with sd.RawInputStream(
-        device = mic_index,
+        device=MIC_INDEX,
         samplerate=SAMPLE_RATE,
         blocksize=CHUNK_SIZE,
         dtype='int16',

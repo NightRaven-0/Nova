@@ -1,24 +1,18 @@
 # tts/elevenlabs_tts.py
 # Speaking (text → ElevenLabs voice) using the new SDK
 
-import os
 from elevenlabs.client import ElevenLabs
 from elevenlabs.play import play
-from config import ELEVENLABS_API_KEY, VOICE_ID
-from config import LOCAL_ONLY_MODE
+from config import ELEVENLABS_API_KEY, VOICE_ID, LOCAL_ONLY_MODE
 
-def speak(text: str):
-    if LOCAL_ONLY_MODE:
-        print(f"[LOCAL_TTS_DISABLED] {text}")
-        return
-
-    # existing ElevenLabs code below
-
-# Create client once
 client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
 def speak(text: str) -> None:
     """Convert text to speech using ElevenLabs."""
+    if LOCAL_ONLY_MODE:
+        print(f"[LOCAL_TTS_DISABLED] {text}")
+        return
+
     text = text.strip()
     if not text:
         return
@@ -26,9 +20,9 @@ def speak(text: str) -> None:
     try:
         audio = client.text_to_speech.convert(
             text=text,
-            voice_id=VOICE_ID,               # must be a *voice ID*, see note below
+            voice_id=VOICE_ID,
             model_id="eleven_multilingual_v2",
-            output_format="mp3_44100_128",   # works with play()
+            output_format="mp3_44100_128",
         )
         play(audio)
     except Exception as e:

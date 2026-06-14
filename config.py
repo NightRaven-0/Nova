@@ -22,6 +22,10 @@ if not ELEVENLABS_API_KEY:
 # Paths
 VOSK_MODEL_PATH = os.path.join("models", "vosk-model-small-en-us-0.15")
 
+MIC_INDEX = os.getenv("MIC_INDEX")
+if MIC_INDEX is not None:
+    MIC_INDEX = int(MIC_INDEX)
+
 LOCAL_ONLY_MODE = str(os.getenv("LOCAL_ONLY_MODE", "1")) == "1"
 
 # Audio settings
