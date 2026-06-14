@@ -22,23 +22,40 @@ def _get_voice():
     return _voice
 
 
-def speak(text: str) -> None:
-    """Synthesize `text` offline and play it through the default output device."""
+def synthesize(text: str):
+    """Synthesize `text` -> (int16 mono numpy array, sample_rate)."""
     text = (text or "").strip()
     if not text:
-        return
+        return np.zeros(0, dtype=np.int16), 22050
+
+    voice = _get_voice()
+    arrays = []
+    rate = 22050
+    for chunk in voice.synthesize(text):  # piper-tts >=1.3 yields AudioChunk objects
+        rate = chunk.sample_rate
+        arrays.append(chunk.audio_int16_array)
+
+    if not arrays:
+        return np.zeros(0, dtype=np.int16), rate
+    return np.concatenate(arrays), rate
+
+
+def play_async(samples: np.ndarray, rate: int) -> None:
+    """Start playback without blocking (used by the barge-in loop)."""
+    sd.play(samples, samplerate=rate)
+
+
+def stop_playback() -> None:
+    """Cut playback off immediately (barge-in)."""
+    sd.stop()
+
+
+def speak(text: str) -> None:
+    """Synthesize and play `text`, blocking until finished."""
     try:
-        voice = _get_voice()
-
-        arrays = []
-        rate = 22050
-        for chunk in voice.synthesize(text):  # piper-tts >=1.3 yields AudioChunk objects
-            rate = chunk.sample_rate
-            arrays.append(chunk.audio_int16_array)
-
-        if not arrays:
+        samples, rate = synthesize(text)
+        if samples.size == 0:
             return
-        samples = np.concatenate(arrays)
         sd.play(samples, samplerate=rate)
         sd.wait()
     except Exception as e:

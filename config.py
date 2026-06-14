@@ -82,6 +82,9 @@ USE_WAKE_WORD = str(os.getenv("USE_WAKE_WORD", "0")) == "1"
 WAKE_WORD_MODEL = os.getenv("WAKE_WORD_MODEL", "hey_jarvis")  # openWakeWord pretrained name
 WAKE_WORD_THRESHOLD = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
 USE_BARGE_IN = str(os.getenv("USE_BARGE_IN", "1")) == "1"
+# Energy (normalized RMS) the mic must exceed to count as the user talking over
+# Nova. Kept high to resist the speakers' echo; lower it if using headphones.
+BARGE_RMS_THRESHOLD = float(os.getenv("BARGE_RMS_THRESHOLD", "0.06"))
 
 # ---------------------------------------------------------------------------
 # Derived / legacy flags (kept for backward compatibility)
