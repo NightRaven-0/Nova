@@ -1,0 +1,5 @@
+# Optional / alternative backends — not needed for the default offline path.
+vosk>=0.3.45          # light offline STT fallback        (STT_BACKEND=vosk)
+elevenlabs>=1.6.1     # cloud TTS                          (TTS_BACKEND=elevenlabs)
+pydub>=0.25.1
+openwakeword>=0.6.0   # wake-word detection (realtime layer, coming next)

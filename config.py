@@ -37,7 +37,7 @@ if TTS_BACKEND == "elevenlabs" and not ELEVENLABS_API_KEY:
 # Local LLM (Ollama, OpenAI-compatible endpoint)
 # ---------------------------------------------------------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen2.5:7b")
+LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:8b")
 OPENAI_LLM_MODEL = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
 
 # ---------------------------------------------------------------------------

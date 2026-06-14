@@ -2,6 +2,8 @@
 # Nova's brain: talks to a local LLM (Ollama, OpenAI-compatible) or OpenAI,
 # runs the function-calling loop, and keeps conversation memory.
 
+import re
+
 from openai import OpenAI
 
 from config import (
@@ -19,6 +21,14 @@ from brain.tools import TOOLS, dispatch_tool
 from brain.memory import ConversationMemory
 
 MAX_TOOL_ROUNDS = 5
+
+# qwen3 and other reasoning models emit <think>...</think> blocks. Strip them so
+# Nova never speaks its internal monologue aloud.
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_think(text: str) -> str:
+    return _THINK_RE.sub("", text or "").strip()
 
 SYSTEM_PROMPT = (
     f"You are {ASSISTANT_NAME} (Natural-language Oriented Voice Assistant), a friendly, "
@@ -83,7 +93,7 @@ class Brain:
                 msg = resp.choices[0].message
 
                 if not msg.tool_calls:
-                    reply = (msg.content or "").strip()
+                    reply = _strip_think(msg.content)
                     self.memory.add_assistant(reply)
                     self.memory.maybe_summarize()
                     self.memory.save()

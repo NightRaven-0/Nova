@@ -1,0 +1,6 @@
+# Phase-1 VAE text cleaner + training script. Optional, off by default
+# (USE_VAE_TEXT_CLEANER=0). Heavy: pulls torch.
+torch>=2.2.0
+sentence-transformers>=3.0.0
+scikit-learn>=1.5.0
+matplotlib>=3.9.0
