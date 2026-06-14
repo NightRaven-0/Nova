@@ -1,11 +1,25 @@
-elevenlabs>=1.6.1
+~# --- Core ---
 python-dotenv>=1.0.1
 sounddevice>=0.4.7
-vosk>=0.3.45
+numpy>=1.26.0
+
+# --- LLM client (used for both OpenAI and Ollama's OpenAI-compatible API) ---
+openai>=1.40.0
+
+# --- Speech to text ---
+faster-whisper>=1.0.0    # offline GPU STT (default)
+vosk>=0.3.45             # offline light STT (fallback backend)
+
+# --- Text to speech ---
+piper-tts>=1.2.0         # offline TTS (default)
+elevenlabs>=1.6.1        # cloud TTS (optional backend)
 pydub>=0.25.1
-openai>=1.40.0   # optional (for cloud LLM)
+
+# --- Wake word (realtime layer) ---
+openwakeword>=0.6.0
+
+# --- Phase 1 VAE text cleaner (optional) ---
 torch>=2.2.0
 sentence-transformers>=3.0.0
-numpy>=1.26.0
 scikit-learn>=1.5.0
 matplotlib>=3.9.0
