@@ -13,7 +13,7 @@ from config import (
     VAE_MATCH_THRESHOLD,
     VAE_MARGIN_THRESHOLD,
 )
-from .vae_pipeline import ReconstructionResult, VAETextProcessor
+from .types import ReconstructionResult
 
 
 class PassthroughProcessor:
@@ -46,6 +46,9 @@ def build_phase1_processor():
         return PassthroughProcessor()
 
     try:
+        # Imported lazily so the default (VAE-disabled) path never needs torch.
+        from .vae_pipeline import VAETextProcessor
+
         processor = VAETextProcessor(
             model_path=str(model_path),
             bank_path=str(bank_path),

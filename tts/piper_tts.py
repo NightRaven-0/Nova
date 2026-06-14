@@ -29,13 +29,16 @@ def speak(text: str) -> None:
         return
     try:
         voice = _get_voice()
-        rate = voice.config.sample_rate
 
-        raw = bytearray()
-        for chunk in voice.synthesize_stream_raw(text):
-            raw.extend(chunk)
+        arrays = []
+        rate = 22050
+        for chunk in voice.synthesize(text):  # piper-tts >=1.3 yields AudioChunk objects
+            rate = chunk.sample_rate
+            arrays.append(chunk.audio_int16_array)
 
-        samples = np.frombuffer(bytes(raw), dtype=np.int16)
+        if not arrays:
+            return
+        samples = np.concatenate(arrays)
         sd.play(samples, samplerate=rate)
         sd.wait()
     except Exception as e:

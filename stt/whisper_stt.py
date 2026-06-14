@@ -3,17 +3,42 @@
 
 from __future__ import annotations
 
-import numpy as np
-from faster_whisper import WhisperModel
+import os
+import sys
 
-from config import (
+import numpy as np
+
+
+def _add_nvidia_dll_dirs() -> None:
+    """ctranslate2 (faster-whisper's engine) needs CUDA cuBLAS + cuDNN DLLs.
+    When those are provided by the nvidia-*-cu12 pip packages rather than a
+    system CUDA install, their bin folders aren't on Windows' DLL search path,
+    so add them explicitly before faster_whisper is imported."""
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import nvidia  # namespace package created by the nvidia-*-cu12 wheels
+    except ImportError:
+        return
+    for pkg_dir in nvidia.__path__:
+        for sub in ("cublas", "cudnn", "cuda_runtime"):
+            bindir = os.path.join(pkg_dir, sub, "bin")
+            if os.path.isdir(bindir):
+                os.add_dll_directory(bindir)
+
+
+_add_nvidia_dll_dirs()
+
+from faster_whisper import WhisperModel  # noqa: E402
+
+from config import (  # noqa: E402
     WHISPER_MODEL,
     WHISPER_DEVICE,
     WHISPER_COMPUTE_TYPE,
     SAMPLE_RATE,
     MIC_INDEX,
 )
-from utils.audio_utils import record_utterance
+from utils.audio_utils import record_utterance  # noqa: E402
 
 # Load the model once. First run downloads weights to the HF cache.
 print(f"Loading Whisper model '{WHISPER_MODEL}' on {WHISPER_DEVICE}... (first run downloads it)")

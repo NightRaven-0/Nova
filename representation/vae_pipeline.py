@@ -11,18 +11,7 @@ import torch.nn.functional as F
 
 from .embedder import SentenceEmbedder
 from .text_vae import TextEmbeddingVAE, vae_loss
-
-
-@dataclass
-class ReconstructionResult:
-    raw_text: str
-    cleaned_text: str
-    vae_decoded_text: str
-    latent_vector: List[float]
-    reconstruction_loss: float
-    raw_match_score: float
-    vae_match_score: float
-    used_fallback: bool
+from .types import ReconstructionResult
 
 
 class VAETextProcessor:
