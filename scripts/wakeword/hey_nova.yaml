@@ -17,7 +17,7 @@ tts_batch_size: 50
 augmentation_rounds: 1
 augmentation_batch_size: 16
 rir_paths:
-  - training/data/rir
+  - training/data/rir/16khz
 background_paths:
   - training/data/background
 background_paths_duplication_rate: [1]
