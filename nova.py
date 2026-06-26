@@ -38,6 +38,12 @@ def _simple_loop():
 
 
 def main():
+    # Tidy up Nova's own old logs (>7 days) so activity logs never pile up.
+    from utils.logs import purge_old_logs
+    deleted, freed = purge_old_logs(retention_days=7)
+    if deleted:
+        print(f"[logs] removed {deleted} old log file(s), freed {freed/1e6:.1f} MB")
+
     # The realtime loop adds wake word and/or barge-in; fall back to the simple
     # loop only when both are disabled.
     if USE_WAKE_WORD or USE_BARGE_IN:

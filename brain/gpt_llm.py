@@ -156,3 +156,30 @@ def _get_brain() -> Brain:
 def ask_gpt(user_text: str) -> str:
     """Backward-compatible entry point used by nova.py."""
     return _get_brain().ask(user_text)
+
+
+# ---------------------------------------------------------------------------
+# Runtime model switching (so you can say "switch to gemma" mid-conversation)
+# ---------------------------------------------------------------------------
+
+# Friendly spoken names -> Ollama tags
+MODEL_ALIASES = {
+    "gemma": "gemma4:12b",
+    "gemma 4": "gemma4:12b",
+    "gemma four": "gemma4:12b",
+    "qwen": "qwen3:8b",
+    "qwen 3": "qwen3:8b",
+    "qwen three": "qwen3:8b",
+}
+
+
+def set_active_model(name: str) -> str:
+    """Switch the live LLM for subsequent replies. Returns the resolved tag."""
+    key = (name or "").strip().lower()
+    tag = MODEL_ALIASES.get(key, key)
+    _get_brain().model = tag
+    return tag
+
+
+def get_active_model() -> str:
+    return _get_brain().model

@@ -1,0 +1,39 @@
+# openWakeWord training config for "hey nova".
+# Run (from the Nova root) once datasets are in place:
+#   python -m openwakeword.train --training_config scripts/wakeword/hey_nova.yaml --generate_clips --augment_clips --train_model
+
+target_phrase:
+  - "hey nova"
+model_name: hey_nova
+custom_negative_phrases: []
+
+# Synthetic positive/negative sample generation (Piper)
+piper_sample_generator_path: training/piper-sample-generator
+n_samples: 2000          # reduced from 10000 default for a faster first model on CPU
+n_samples_val: 500
+tts_batch_size: 50
+
+# Augmentation
+augmentation_rounds: 1
+augmentation_batch_size: 16
+rir_paths:
+  - training/data/rir
+background_paths:
+  - training/data/background
+background_paths_duplication_rate: [1]
+
+# Model + training
+model_type: dnn
+layer_size: 32
+steps: 20000             # reduced from 50000 default
+max_negative_weight: 1500
+target_false_positives_per_hour: 0.2
+batch_n_per_class:
+  ACAV100M_sample: 1024
+  adversarial_negative: 50
+  positive: 50
+feature_data_files:
+  ACAV100M_sample: training/data/features/openwakeword_features_ACAV100M_2000_hrs_16bit.npy
+false_positive_validation_data_path: training/data/features/validation_set_features.npy
+
+output_dir: training/wakeword_out

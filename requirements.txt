@@ -5,6 +5,7 @@ numpy>=1.26.0
 openai>=1.40.0          # client for both OpenAI and Ollama's OpenAI-compatible API
 faster-whisper>=1.0.0   # offline GPU speech-to-text
 piper-tts>=1.2.0        # offline text-to-speech
+psutil>=5.9.0           # system stats for the 'vibe check' tool
 
 # CUDA 12 runtime needed for GPU Whisper on Windows (omit if WHISPER_DEVICE=cpu):
 nvidia-cublas-cu12
