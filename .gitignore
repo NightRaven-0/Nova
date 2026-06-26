@@ -1,4 +1,35 @@
+# --- Secrets / local config ---
 .env
-models/
+.env.*
+!.env.example
+
+# --- Python ---
 __pycache__/
 **/__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# --- Model weights & voices (download separately — see readme.md) ---
+models/
+*.onnx
+*.pt
+*.gguf
+*.bin
+*.npy
+
+# --- Wake-word training: generator clone, multi-GB datasets, outputs ---
+training/
+
+# --- Runtime state & logs (user-specific, auto-generated) ---
+logs/
+data/*.json
+artifacts/
+
+# --- Editor / OS cruft ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
