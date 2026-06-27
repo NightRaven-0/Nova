@@ -10,6 +10,30 @@ and barge-in on top.
 
 ---
 
+## Project status
+
+**Working now — fully offline, no cloud, no API keys:**
+- ✅ Speech-to-text — faster-whisper on GPU (Vosk fallback)
+- ✅ Brain — Ollama (`qwen3:8b`) with function-calling tools + persistent, self-summarizing memory
+- ✅ Text-to-speech — Piper (ElevenLabs optional)
+- ✅ Realtime loop — wake word (openWakeWord) + barge-in
+- ✅ Skills framework — drop a file in `skills/` to add a capability (11 skills live)
+- ✅ Extras — voice model-switching, system "vibe check", Attenborough mode, sass counter
+- ✅ Hardened app-launcher (no shell injection); logs auto-purge after 7 days; integration-tested 27/27
+
+**In progress:**
+- 🔄 Custom **"hey Nova"** wake word — training locally (16.5 GB data + 5,000 clips done; model training running)
+
+**Planned (see [ROADMAP.md](ROADMAP.md)):**
+- ⬜ Phase 1 — learns from your corrections (RAG)
+- ⬜ Phase 3 — connected services (email, Discord, calendar)
+- ⬜ Phase 4 — computer-use (on-screen agency)
+- ⬜ Phase 5 — self-improvement (DPO/LoRA + self-extending skills)
+- ⬜ Phase 6 — proactivity
+- ⬜ More Windows control (typing, clipboard, windows); optional `gemma4:12b` brain
+
+---
+
 ## Prerequisites — install these first
 
 Model weights and datasets are **not in this repo** (they're in `.gitignore` — too big for
