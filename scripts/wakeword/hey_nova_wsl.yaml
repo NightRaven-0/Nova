@@ -1,0 +1,37 @@
+# openWakeWord training config for WSL/Linux.
+# Output goes to the WSL native filesystem (memmap/trim work there); big inputs are
+# read from the Windows drive at /mnt/z. Run via:
+#   NOVA_TRAIN_CONFIG=scripts/wakeword/hey_nova_wsl.yaml ~/nova-train/bin/python scripts/wakeword/train_wakeword.py
+
+target_phrase:
+  - "hey nova"
+model_name: hey_nova
+custom_negative_phrases: []
+
+piper_sample_generator_path: "/mnt/z/VS CODE/Nova/training/piper-sample-generator"
+n_samples: 2000
+n_samples_val: 500
+tts_batch_size: 50
+
+augmentation_rounds: 1
+augmentation_batch_size: 16
+rir_paths:
+  - "/mnt/z/VS CODE/Nova/training/data/rir/16khz"
+background_paths:
+  - "/mnt/z/VS CODE/Nova/training/data/background"
+background_paths_duplication_rate: [1]
+
+model_type: dnn
+layer_size: 32
+steps: 20000
+max_negative_weight: 1500
+target_false_positives_per_hour: 0.2
+batch_n_per_class:
+  ACAV100M_sample: 1024
+  adversarial_negative: 50
+  positive: 50
+feature_data_files:
+  ACAV100M_sample: "/home/raven0/nova_data/openwakeword_features_ACAV100M_2000_hrs_16bit.npy"
+false_positive_validation_data_path: "/home/raven0/nova_data/validation_small.npy"
+
+output_dir: "/home/raven0/nova_out"

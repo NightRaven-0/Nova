@@ -8,8 +8,18 @@ run `openwakeword.train` as __main__.
 Usage (from the Nova root):
     python scripts/wakeword/train_wakeword.py
 """
+import os
 import runpy
 import sys
+
+# Python 3.14 changed the default multiprocessing start method to 'forkserver' on POSIX,
+# which makes DataLoader(num_workers>0) try to pickle openWakeWord's generator-backed
+# IterDataset (defined in __main__) -> PicklingError. Force 'fork' (no pickling needed).
+try:
+    import multiprocessing
+    multiprocessing.set_start_method("fork", force=True)
+except (ValueError, RuntimeError, ImportError):
+    pass
 
 # --- scipy compat: acoustics does `from scipy.special import sph_harm` and
 #     `from scipy.interpolate import interp2d`, both removed in modern scipy.
@@ -115,9 +125,12 @@ try:
 except Exception:
     pass
 
+_cfg = os.environ.get("NOVA_TRAIN_CONFIG", "scripts/wakeword/hey_nova.yaml")
 sys.argv = [
     "openwakeword.train",
-    "--training_config", "scripts/wakeword/hey_nova.yaml",
-    "--generate_clips", "--augment_clips", "--train_model", "--overwrite",
+    "--training_config", _cfg,
+    "--generate_clips", "--augment_clips", "--train_model",
 ]
+if os.environ.get("NOVA_TRAIN_OVERWRITE") == "1":  # set to recompute features from scratch
+    sys.argv.append("--overwrite")
 runpy.run_module("openwakeword.train", run_name="__main__")

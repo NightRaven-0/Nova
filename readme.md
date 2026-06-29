@@ -21,8 +21,7 @@ and barge-in on top.
 - ✅ Extras — voice model-switching, system "vibe check", Attenborough mode, sass counter
 - ✅ Hardened app-launcher (no shell injection); logs auto-purge after 7 days; integration-tested 27/27
 
-**In progress:**
-- 🔄 Custom **"hey Nova"** wake word — training locally (16.5 GB data + 5,000 clips done; model training running)
+- ✅ Custom **"hey Nova"** wake word — trained in WSL (see Troubleshooting); enable with `USE_WAKE_WORD=1` + `WAKE_WORD_MODEL=models/wakeword/hey_nova.onnx`
 
 **Planned (see [ROADMAP.md](ROADMAP.md)):**
 - ⬜ Phase 1 — learns from your corrections (RAG)
@@ -212,3 +211,78 @@ needs Linux, and `hey_jarvis` works in the meantime.
 The training ran as a detached process and died with the outage, but **all downloaded data and
 generated clips survived on disk** — so recovery was just relaunching; nothing re-downloaded or
 re-generated. (The expensive steps write to disk and are inherently resumable.)
+
+### Running the wake-word training in WSL2 (the fix that worked)
+Moving to WSL2 (Ubuntu) cleared the two fatal Windows blockers — but a few new issues came up
+there too:
+
+- **WSL not installed** — `wsl --install` in an **admin** PowerShell, then **reboot**. (The
+  Start-menu Ubuntu launcher may "open and close instantly"; running `wsl ...` from PowerShell
+  works regardless.)
+- **Privileged setup without a password** — `wsl -u root <cmd>` runs as root passwordless, so
+  `apt` installs need no login.
+- **Garbled output / quoting hell** — set `$env:WSL_UTF8=1` for clean text, and pass multi-line
+  bash via a file: `wsl bash -c "tr -d '\r' < /mnt/c/.../script.sh | bash"` (the `tr` strips
+  Windows CRLF). Inline heredocs through PowerShell→WSL→bash get mangled.
+- **Ubuntu 26.04 also ships Python 3.14** — so the scipy/numpy/torchaudio API-removal issues
+  *recur*, but the **same** `train_wakeword.py` shims fix them (they're cross-platform). The two
+  *fatal* Windows blockers (`trim_mmap` `os.remove`, fork multiprocessing) simply don't exist on
+  Linux, so training **completes**.
+- **`openwakeword==0.6.0` won't install on Linux** — it hard-requires `tflite-runtime`, which has
+  no Python 3.14 wheel, so pip silently falls back to **0.4.0, which has no `train` module at
+  all**. Fix: `pip install --no-deps openwakeword==0.6.0` (training uses ONNX, not tflite, and the
+  deps are already installed).
+- **Big file over the drive mount** — numpy `mmap_mode='r'` on the 16.5 GB feature file works
+  fine from `/mnt/z` (tested), so **no need to copy 16.5 GB into Linux**. Keep the *output*
+  (computed features, the model) on the WSL **native** filesystem (`~/...`); only read big inputs
+  from `/mnt/z`.
+- **piper not installed in WSL** — the trainer still `import`s `generate_samples`, so the shim
+  degrades to a stub (we reuse the already-generated 16 kHz clips, so generation is skipped).
+- **Keeping the long job alive** — launch with `setsid … &` so it survives the `wsl.exe` call
+  returning.
+
+One-time setup, then run (reuses all the Windows-side data/clips):
+```bash
+# in WSL (Ubuntu)
+sudo apt install -y python3-pip python3-venv build-essential ffmpeg libsndfile1
+python3 -m venv ~/nova-train
+~/nova-train/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+~/nova-train/bin/pip install "audiomentations<0.34" torch_audiomentations speechbrain acoustics \
+    torchinfo torchmetrics pronouncing mutagen soundfile
+~/nova-train/bin/pip install --no-deps openwakeword==0.6.0
+~/nova-train/bin/pip install onnxscript   # torch's ONNX exporter needs it
+~/nova-train/bin/python -c "import openwakeword.utils as u; u.download_models()"
+
+cd "/mnt/z/VS CODE/Nova"
+NOVA_TRAIN_CONFIG=scripts/wakeword/hey_nova_wsl.yaml ~/nova-train/bin/python scripts/wakeword/train_wakeword.py
+```
+The result `hey_nova.onnx` goes to `models/wakeword/` on the Windows side; set `USE_WAKE_WORD=1`
+and `WAKE_WORD_MODEL=models/wakeword/hey_nova.onnx` in `.env`.
+
+### WSL training — runtime gotchas (memory, multiprocessing, export)
+Even on Linux, getting the run to actually *finish* took a few more fixes — all handled in
+`scripts/wakeword/train_wakeword.py` and the WSL config:
+
+- **OOM-killed at ~75% of training.** WSL2 only gets ~half your Windows RAM (7.6 GiB here), and
+  two things blew past it — both fixed:
+  - openWakeWord builds a **sliding-window array** from `validation_set_features.npy`
+    (`[X[i:i+16] for i in range(0, N, 1)]` over ~480k frames = a multi-GB array). Fix: **truncate
+    the FP-validation set** (e.g. to 50k frames) — it only estimates a false-positive rate and
+    doesn't affect the trained model.
+  - mmap'ing the 16.5 GB feature file straight from `/mnt/z` (the Windows drive mount) creates
+    **non-reclaimable** pages that accumulate. Fix: **copy big inputs to native ext4** (`~/...`),
+    where mmap pages are evictable file-cache, and point the config there. (Raising the WSL RAM
+    cap via `.wslconfig` helps too, but the array can exceed even that — shrink it.)
+- **`PicklingError: Can't pickle <class '__main__.IterDataset'>` at the training step.** Python
+  3.14 changed the default multiprocessing start method to `forkserver` on Linux, so
+  `DataLoader(num_workers>0)` tries to pickle openWakeWord's generator-backed dataset. Fix:
+  `multiprocessing.set_start_method("fork", force=True)`.
+- **`OSError: ... written` / corrupt `.npy`.** `np.save` over a file that's still mmap-open
+  corrupts it (partial write). Fix: write the truncated set to a **new** filename, reading from
+  the intact source.
+- **`ModuleNotFoundError: No module named 'onnxscript'` at the final export.** torch's ONNX
+  exporter needs it. Fix: `pip install onnxscript` (now in the setup above).
+
+Operational note: long *blocking* WSL commands launched from PowerShell get SIGTERM'd after ~30 s
+in this setup, so run the training **detached** (`setsid … &`, writing to a log) and poll with
+short, non-blocking checks.
