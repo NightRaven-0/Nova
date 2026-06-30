@@ -138,10 +138,17 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
   install. Fix: open a fresh terminal (or refresh `PATH` from the registry).
 
 ### GPU speech-to-text (faster-whisper)
-- **`RuntimeError: Library cublas64_12.dll is not found`** — ctranslate2 needs the CUDA 12
-  runtime. Fix: `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`; `stt/whisper_stt.py` then
-  adds their `bin` folders to the DLL search path via `os.add_dll_directory()` **before**
-  importing `faster_whisper`. No NVIDIA GPU? Set `WHISPER_DEVICE=cpu`, `WHISPER_COMPUTE_TYPE=int8`.
+- **`RuntimeError: Library cublas64_12.dll is not found or cannot be loaded`** — ctranslate2
+  needs the CUDA 12 runtime. Fix: `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`;
+  `stt/whisper_stt.py` adds their `bin` folders to the DLL search path via
+  `os.add_dll_directory()` **before** importing `faster_whisper`. **Crucial gotcha:** keep the
+  handles `os.add_dll_directory()` returns **alive** (store them in a module global) — if they're
+  garbage-collected, the directory is *removed* from the search path, and ctranslate2 loads
+  cuBLAS **lazily at `encode()`** (the first real transcription), long after import, so it fails
+  *then*, not at startup. (Also add the dirs to `PATH` so dependent DLLs resolve.) **Testing
+  gotcha:** transcribing silence skips `encode()` (the VAD filters it), so a "whisper works" test
+  on silence is a false pass — validate with `vad_filter=False` on real/energetic audio. No
+  NVIDIA GPU? Set `WHISPER_DEVICE=cpu`, `WHISPER_COMPUTE_TYPE=int8`.
 
 ### Text-to-speech (Piper)
 - **`PiperVoice` has no attribute `synthesize_stream_raw`** — the API changed in piper-tts ≥1.3.
@@ -154,6 +161,24 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
 ### Brain (Ollama / qwen3)
 - **Nova reads its reasoning aloud** — qwen3 emits `<think>…</think>`. Fix: strip those blocks
   before speaking (`_strip_think` in `brain/gpt_llm.py`).
+- **Replies take ~20 s** — it's *not* your CPU or network (everything's local). Two causes:
+  (1) qwen3 *thinks* (chain-of-thought) before every answer, even after we hide it — pure
+  latency. Fix: disable it with `/no_think` in the system prompt (done in `gpt_llm.py`).
+  (2) The **first** reply after startup loads the 5 GB model into VRAM (~10 s, one-time);
+  later turns are warm (~2 s plain, ~4 s with a tool call). **Gaming at the same time** is the
+  other big factor — the game and the LLM fight over the same VRAM/GPU, and if VRAM is full
+  Ollama spills layers to the CPU (much slower). For snappy replies, don't game simultaneously,
+  or `switch to` a smaller model while gaming.
+- **Nova uses emoji** even though the prompt says not to — models leak them anyway. Fix: a hard
+  emoji/pictograph strip on the final text (`_clean_reply` + `_EMOJI_RE` in `gpt_llm.py`), plus
+  a firmer prompt rule.
+- **Wrong / made-up time or date** (e.g. "11:32 AM on Sunday, June 14" when it's really late
+  June) — qwen3 **didn't call the `get_current_time` tool**, it *hallucinated* a time. Worse,
+  that wrong answer got saved to `data/memory.json`, so it parroted the same lie on every later
+  turn (**memory poisoning**). Fixes: (1) a `CRITICAL:` prompt rule forcing a tool call for any
+  time/date question and `temperature=0.3` for obedience; (2) clear the poisoned history
+  (`del data/memory.json` — it rebuilds empty). The clock and tool were always correct; the
+  model just wasn't using them.
 - **Every reply errors with "model not found"** — `LOCAL_LLM_MODEL` points at a model you
   haven't pulled. Fix: `ollama pull <model>` or change `.env`.
 - **Ollama server dies during a network blip; pulls crawl** — restart the Ollama app. A

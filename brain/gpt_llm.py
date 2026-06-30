@@ -30,16 +30,48 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 def _strip_think(text: str) -> str:
     return _THINK_RE.sub("", text or "").strip()
 
+
+# Replies are spoken aloud and the user wants zero emoji/pictographs. Don't trust
+# the model to obey the prompt — strip them from the final text as well.
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001f300-\U0001faff"  # symbols, pictographs, emoji (incl. 😊 U+1F60A), supplemental
+    "\U00002600-\U000026ff"  # miscellaneous symbols
+    "\U00002700-\U000027bf"  # dingbats
+    "\U0001f1e6-\U0001f1ff"  # regional indicator (flag) letters
+    "\U00002b00-\U00002bff"  # misc symbols and arrows
+    "\U00002190-\U000021ff"  # arrows
+    "\U0000fe00-\U0000fe0f"  # variation selectors
+    "\U0000200d"             # zero-width joiner
+    "\U00002022\U000025aa\U000025fe"  # bullets the model sometimes adds
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _clean_reply(text: str) -> str:
+    """Strip reasoning blocks and all emoji, leaving plain spoken text."""
+    text = _strip_think(text)
+    text = _EMOJI_RE.sub("", text)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+
 SYSTEM_PROMPT = (
     f"You are {ASSISTANT_NAME} (Natural-language Oriented Voice Assistant), a friendly, "
     "concise voice assistant for the user's Windows PC.\n"
-    "Your replies are spoken aloud, so keep them short and conversational. Do NOT use "
-    "markdown, bullet points, code blocks, headings, or emoji — write the way you'd say it.\n"
+    "Your replies are spoken aloud, so keep them short and conversational. Write the way "
+    "you'd say it out loud: plain sentences only. Never use markdown, bullet points, code "
+    "blocks, headings, emoji, or emoticons of any kind.\n"
     "You can control the PC with the provided tools: open websites and applications, "
     "search the web, tell the time, and power actions. Call a tool when the user wants "
     "something done on the computer; otherwise just answer.\n"
+    "CRITICAL: For the current time or date, you MUST call the get_current_time tool and "
+    "use its result exactly — never state a time or date from memory, prior turns, or a "
+    "guess, because those are wrong. Likewise, use the web search tool for facts you are "
+    "not certain of instead of making them up.\n"
     "Speech recognition can be imperfect. If a request seems garbled or ambiguous, ask a "
-    "brief clarifying question instead of guessing."
+    "brief clarifying question instead of guessing.\n"
+    "/no_think"  # qwen3: disable slow chain-of-thought; harmless to other models
 )
 
 
@@ -89,11 +121,12 @@ class Brain:
                     messages=working,
                     tools=TOOLS,
                     tool_choice="auto",
+                    temperature=0.3,
                 )
                 msg = resp.choices[0].message
 
                 if not msg.tool_calls:
-                    reply = _strip_think(msg.content)
+                    reply = _clean_reply(msg.content)
                     self.memory.add_assistant(reply)
                     self.memory.maybe_summarize()
                     self.memory.save()

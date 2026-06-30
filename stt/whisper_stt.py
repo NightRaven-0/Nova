@@ -9,22 +9,35 @@ import sys
 import numpy as np
 
 
+# Keep os.add_dll_directory handles alive for the whole process — if they're
+# garbage-collected, the directory is REMOVED from the DLL search path, and
+# ctranslate2 loads cuBLAS lazily at encode() time (long after import), so the
+# dir must still be present then.
+_dll_dir_handles = []
+
+
 def _add_nvidia_dll_dirs() -> None:
     """ctranslate2 (faster-whisper's engine) needs CUDA cuBLAS + cuDNN DLLs.
-    When those are provided by the nvidia-*-cu12 pip packages rather than a
-    system CUDA install, their bin folders aren't on Windows' DLL search path,
-    so add them explicitly before faster_whisper is imported."""
+    When those come from the nvidia-*-cu12 pip packages rather than a system CUDA
+    install, their bin folders aren't on Windows' DLL search path, so add them
+    before faster_whisper is imported (handles kept alive + also put on PATH so
+    dependent DLLs resolve)."""
     if not sys.platform.startswith("win"):
         return
     try:
         import nvidia  # namespace package created by the nvidia-*-cu12 wheels
     except ImportError:
         return
+    bindirs = []
     for pkg_dir in nvidia.__path__:
-        for sub in ("cublas", "cudnn", "cuda_runtime"):
+        for sub in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc"):
             bindir = os.path.join(pkg_dir, sub, "bin")
             if os.path.isdir(bindir):
-                os.add_dll_directory(bindir)
+                bindirs.append(bindir)
+    for bindir in bindirs:
+        _dll_dir_handles.append(os.add_dll_directory(bindir))  # MUST keep the handle
+    if bindirs:
+        os.environ["PATH"] = os.pathsep.join(bindirs) + os.pathsep + os.environ.get("PATH", "")
 
 
 _add_nvidia_dll_dirs()
