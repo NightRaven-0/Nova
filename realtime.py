@@ -10,7 +10,9 @@ import time
 import numpy as np
 import sounddevice as sd
 
-from utils.cli import print_banner
+import os
+
+from utils.cli import print_banner, is_exit_command
 from brain.gpt_llm import ask_gpt
 from representation import build_phase1_processor
 from stt.recognizer import listen_and_transcribe
@@ -26,8 +28,10 @@ from config import (
 )
 
 FRAME = 1280  # 80 ms @ 16 kHz — openWakeWord's expected chunk size
-EXIT_WORDS = {"quit", "exit", "stop", "goodbye"}
-_BARGE_MIN_FRAMES = 4  # ~320 ms of sustained speech before we count it as barge-in
+_BARGE_MIN_FRAMES = 4      # ~320 ms of sustained speech before we count it as barge-in
+_BARGE_GRACE_SEC = 0.35   # ignore the very start (playback ramp-up / mic settling)
+_BARGE_DEBUG = os.getenv("BARGE_DEBUG") == "1"  # print peak mic level to help tune the threshold
+_barge_warned = False     # only warn once if the monitor mic can't open
 
 
 def _rms(frame_i16: np.ndarray) -> float:
@@ -62,10 +66,13 @@ def _speak(text: str) -> bool:
     if samples.size == 0:
         return False
 
+    global _barge_warned
     play_async(samples, rate)
-    deadline = time.time() + len(samples) / float(rate)
+    start = time.time()
+    deadline = start + len(samples) / float(rate)
 
     loud = 0
+    peak = 0.0
     try:
         with sd.InputStream(
             samplerate=SAMPLE_RATE, device=MIC_INDEX, channels=1,
@@ -73,15 +80,28 @@ def _speak(text: str) -> bool:
         ) as mic:
             while time.time() < deadline:
                 data, _ = mic.read(FRAME)
-                if _rms(data[:, 0]) >= BARGE_RMS_THRESHOLD:
+                level = _rms(data[:, 0])
+                peak = max(peak, level)
+                # Ignore the first fraction of a second (playback ramp-up / mic settling).
+                if time.time() - start < _BARGE_GRACE_SEC:
+                    continue
+                if level >= BARGE_RMS_THRESHOLD:
                     loud += 1
                     if loud >= _BARGE_MIN_FRAMES:
                         stop_playback()
+                        if _BARGE_DEBUG:
+                            print(f"   [barge-in fired: peak {peak:.3f} >= {BARGE_RMS_THRESHOLD}]")
                         return True
                 else:
                     loud = 0
-    except Exception:
-        # If a second mic stream can't open during playback, just let it finish.
+        if _BARGE_DEBUG:
+            print(f"   [barge-in: peak mic level {peak:.3f} (threshold {BARGE_RMS_THRESHOLD}) "
+                  f"— lower BARGE_RMS_THRESHOLD if you spoke and it didn't stop]")
+    except Exception as e:
+        if not _barge_warned:
+            print(f"   [barge-in disabled: couldn't open the monitor mic during playback ({e}). "
+                  f"Set USE_BARGE_IN=0 to silence this, or use headphones.]")
+            _barge_warned = True
         sd.wait()
         return False
 
@@ -116,7 +136,7 @@ def run_realtime() -> None:
             continue
 
         print(f" You:  {user_input}")
-        if user_input.lower().strip(" .!?") in EXIT_WORDS:
+        if is_exit_command(user_input):
             _speak("Goodbye!")
             print(" Goodbye!")
             break

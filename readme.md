@@ -181,6 +181,23 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
   model just wasn't using them.
 - **Every reply errors with "model not found"** — `LOCAL_LLM_MODEL` points at a model you
   haven't pulled. Fix: `ollama pull <model>` or change `.env`.
+
+### Voice & interaction (robotic voice, barge-in, exit words)
+- **Voice sounds robotic** — that's the Piper voice model, not a bug. Swap `amy-medium` for a
+  more natural one — **`en_US-libritts_r-medium`** (LibriTTS-R, the most human-like) or
+  `en_US-hfc_female-medium`. Download the `.onnx` + `.onnx.json` from
+  [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) into `models/piper/` (use
+  `huggingface_hub`, not a plain fetch — a raw download truncates the model → `INVALID_PROTOBUF`)
+  and point `PIPER_MODEL_PATH` at it in `.env`.
+- **Barge-in won't stop her when you talk over her** — the detector is a mic-energy threshold, so
+  it's setup-dependent. Run once with `BARGE_DEBUG=1` to print your peak mic level each reply,
+  then set `BARGE_RMS_THRESHOLD` in `.env` just under it. On speakers the mic also hears Nova's
+  own voice (echo) — **headphones make barge-in reliable**. A monitor-mic that fails to open now
+  prints a warning instead of silently disabling barge-in.
+- **"quit" doesn't exit but "exit" does** — "quit" is a short plosive word Whisper often
+  mis-hears as "with"/"it". Use **"exit", "stop", "goodbye", or "bye"** (all matched by
+  `is_exit_command`, whole-utterance so "stop the music" won't quit). We deliberately DON'T map
+  "with"/"it" to quit — that would cause random accidental exits.
 - **Ollama server dies during a network blip; pulls crawl** — restart the Ollama app. A
   half-finished `ollama pull` leaves a `sha256-…-partial` blob in `~/.ollama/models/blobs`
   (safe to delete to reclaim space; complete blobs have no `-partial` suffix).

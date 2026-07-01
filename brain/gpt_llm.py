@@ -197,12 +197,14 @@ def ask_gpt(user_text: str) -> str:
 
 # Friendly spoken names -> Ollama tags
 MODEL_ALIASES = {
-    "gemma": "gemma4:12b",
-    "gemma 4": "gemma4:12b",
-    "gemma four": "gemma4:12b",
+    "gemma": "gemma3:4b",
+    "gemma 3": "gemma3:4b",
+    "gemma three": "gemma3:4b",
     "qwen": "qwen3:8b",
     "qwen 3": "qwen3:8b",
     "qwen three": "qwen3:8b",
+    "qwen small": "qwen3:4b",
+    "fast": "gemma3:4b",
 }
 
 

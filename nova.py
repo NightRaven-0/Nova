@@ -1,4 +1,4 @@
-from utils.cli import print_banner
+from utils.cli import print_banner, is_exit_command
 from stt.recognizer import listen_and_transcribe
 from brain.gpt_llm import ask_gpt
 from tts.voice import speak
@@ -7,8 +7,6 @@ from config import USE_WAKE_WORD, USE_BARGE_IN
 from dotenv import load_dotenv
 
 load_dotenv()
-
-EXIT_WORDS = {"quit", "exit", "stop", "goodbye"}
 
 
 def _simple_loop():
@@ -27,7 +25,7 @@ def _simple_loop():
 
         print(f" You:  {user_input}")
 
-        if user_input.lower().strip(" .!?") in EXIT_WORDS:
+        if is_exit_command(user_input):
             speak("Goodbye!")
             print(" Goodbye!")
             break
