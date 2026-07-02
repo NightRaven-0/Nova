@@ -33,11 +33,11 @@ def sass_counter(args: dict) -> str:
 
 
 @skill(
-    name="attenborough",
-    description="Observe what the user is currently doing on screen (the active window) so Nova can narrate it like a David Attenborough nature documentary. Use for 'Attenborough mode' or 'narrate what I'm doing'.",
+    name="roast_screen",
+    description="Look at what's currently on the user's screen (the active window) and roast them about it — a witty, playful jab about whatever they're doing. Use for 'roast me', 'roast my screen', or 'make fun of what I'm doing'.",
     parameters={"type": "object", "properties": {}},
-    examples=["attenborough mode", "narrate what I'm doing"],
+    examples=["roast me", "roast my screen", "make fun of what I'm doing"],
 )
-def attenborough(_args: dict) -> str:
-    from utils.fun import attenborough_observe
-    return attenborough_observe()
+def roast_screen(_args: dict) -> str:
+    from utils.fun import roast_observe
+    return roast_observe()

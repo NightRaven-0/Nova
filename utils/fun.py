@@ -75,7 +75,7 @@ def get_sass() -> int:
     return _read_sass()
 
 
-# ---- Attenborough mode ----------------------------------------------------
+# ---- Screen roast ---------------------------------------------------------
 def _active_window_title() -> str:
     if not sys.platform.startswith("win"):
         return ""
@@ -91,12 +91,14 @@ def _active_window_title() -> str:
         return ""
 
 
-def attenborough_observe() -> str:
+def roast_observe() -> str:
+    """Return context for the LLM to roast whatever is on the user's screen."""
     title = _active_window_title()
-    log_activity(f"attenborough: {title!r}")
+    log_activity(f"roast: {title!r}")
     if not title:
-        return ("The habitat is still and dark — no foreground window in sight. "
-                "Narrate this rare moment of digital dormancy like David Attenborough.")
-    return (f"The user is currently dwelling within '{title}'. "
-            "Narrate what they appear to be doing in the hushed, reverent, faintly dramatic "
-            "voice of David Attenborough observing a creature in the wild.")
+        return ("There's no foreground window at all — the desktop is empty. Roast the user "
+                "in one line for having such a barren, boring screen right now.")
+    return (f"The user's active window is '{title}'. In ONE or TWO short spoken sentences, "
+            "roast them about it — witty, playful, a little savage, like a friend teasing "
+            "them about what's on their screen. Name the specific app/window. Example vibe: "
+            "\"Task Manager again? Watching me eat your RAM for breakfast, are we?\"")

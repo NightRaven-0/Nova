@@ -57,8 +57,11 @@ def _clean_reply(text: str) -> str:
 
 
 SYSTEM_PROMPT = (
-    f"You are {ASSISTANT_NAME} (Natural-language Oriented Voice Assistant), a friendly, "
-    "concise voice assistant for the user's Windows PC.\n"
+    f"You are {ASSISTANT_NAME} (Natural-language Oriented Voice Assistant), a voice "
+    "assistant for the user's Windows PC with a sharp, witty, playfully sarcastic "
+    "personality — a clever friend who teases and roasts but always delivers. Lead with "
+    "being genuinely helpful and concise; land a dry quip or a little sass when it fits, "
+    "never at the expense of actually answering. Don't be mean-spirited or overdo it.\n"
     "Your replies are spoken aloud, so keep them short and conversational. Write the way "
     "you'd say it out loud: plain sentences only. Never use markdown, bullet points, code "
     "blocks, headings, emoji, or emoticons of any kind.\n"
@@ -84,6 +87,10 @@ class Brain:
         else:
             self.client = OpenAI(api_key=OPENAI_API_KEY)
             self.model = OPENAI_LLM_MODEL
+
+        # Model tags Ollama reports as not supporting tool-calling (e.g. gemma3).
+        # For these we fall back to plain chat instead of erroring with a 400.
+        self._no_tools = set()
 
         self.memory = ConversationMemory(
             path=MEMORY_PATH,
@@ -114,15 +121,26 @@ class Brain:
         self.memory.add_user(user_text)
         working = self.memory.build_messages()
 
+        use_tools = self.model not in self._no_tools
         try:
             for _ in range(MAX_TOOL_ROUNDS):
-                resp = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=working,
-                    tools=TOOLS,
-                    tool_choice="auto",
-                    temperature=0.3,
-                )
+                kwargs = dict(model=self.model, messages=working, temperature=0.3)
+                if use_tools:
+                    kwargs["tools"] = TOOLS
+                    kwargs["tool_choice"] = "auto"
+                try:
+                    resp = self.client.chat.completions.create(**kwargs)
+                except Exception as e:
+                    # Some models (e.g. gemma3) don't support tool-calling — degrade
+                    # to plain chat rather than crashing the whole reply.
+                    if use_tools and "does not support tools" in str(e).lower():
+                        self._no_tools.add(self.model)
+                        use_tools = False
+                        print(f"[brain] '{self.model}' can't call tools — replying without "
+                              "them (open/search/time commands need a tool-capable model "
+                              "like qwen3).")
+                        continue
+                    raise
                 msg = resp.choices[0].message
 
                 if not msg.tool_calls:
@@ -204,7 +222,7 @@ MODEL_ALIASES = {
     "qwen 3": "qwen3:8b",
     "qwen three": "qwen3:8b",
     "qwen small": "qwen3:4b",
-    "fast": "gemma3:4b",
+    "fast": "qwen3:4b",  # fast AND tool-capable (gemma3 can't call tools)
 }
 
 

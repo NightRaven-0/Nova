@@ -85,6 +85,10 @@ USE_BARGE_IN = str(os.getenv("USE_BARGE_IN", "1")) == "1"
 # Energy (normalized RMS) the mic must exceed to count as the user talking over
 # Nova. Kept high to resist the speakers' echo; lower it if using headphones.
 BARGE_RMS_THRESHOLD = float(os.getenv("BARGE_RMS_THRESHOLD", "0.06"))
+# Once awake (after the wake word), Nova stays in conversation and keeps listening
+# WITHOUT needing the wake word again. After this many seconds of silence she goes
+# back to sleep (waits for the wake word). Also the idle trigger for AFK status.
+SLEEP_AFTER_S = float(os.getenv("SLEEP_AFTER_S", "300"))
 
 # ---------------------------------------------------------------------------
 # Derived / legacy flags (kept for backward compatibility)

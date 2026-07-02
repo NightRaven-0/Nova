@@ -55,6 +55,20 @@ def is_exit_command(text: str) -> bool:
     return t in _EXIT_PHRASES
 
 
+# Send Nova back to sleep (waits for the wake word again) without quitting.
+_SLEEP_PHRASES = {
+    "sleep", "go to sleep", "go back to sleep", "nova sleep", "sleep nova",
+    "go to bed", "take a nap", "nap", "standby", "stand by", "pause",
+    "dismissed", "that's all for now", "thats all for now", "never mind",
+}
+
+
+def is_sleep_command(text: str) -> bool:
+    """True if the user is telling Nova to go dormant (but not quit)."""
+    t = (text or "").lower().strip().strip(".!?,\"' ")
+    return t in _SLEEP_PHRASES
+
+
 # ---------------------------------------------------------------------------
 # Banner
 # ---------------------------------------------------------------------------

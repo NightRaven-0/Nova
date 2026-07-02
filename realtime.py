@@ -12,7 +12,7 @@ import sounddevice as sd
 
 import os
 
-from utils.cli import print_banner, is_exit_command
+from utils.cli import print_banner, is_exit_command, is_sleep_command
 from brain.gpt_llm import ask_gpt
 from representation import build_phase1_processor
 from stt.recognizer import listen_and_transcribe
@@ -24,6 +24,7 @@ from config import (
     WAKE_WORD_MODEL,
     WAKE_WORD_THRESHOLD,
     BARGE_RMS_THRESHOLD,
+    SLEEP_AFTER_S,
     TTS_BACKEND,
 )
 
@@ -112,6 +113,7 @@ def _speak(text: str) -> bool:
 def run_realtime() -> None:
     print_banner()
     phase1 = build_phase1_processor()
+    from utils import afk
 
     detector = None
     if USE_WAKE_WORD:
@@ -119,30 +121,48 @@ def run_realtime() -> None:
         print(f"[wake] loading '{WAKE_WORD_MODEL}'...")
         detector = WakeWordDetector(WAKE_WORD_MODEL, WAKE_WORD_THRESHOLD)
 
-    skip_wake = False
-    while True:
-        if detector and not skip_wake:
-            print(f"Waiting for wake word ('{WAKE_WORD_MODEL}')... say it to start.")
-            _wait_for_wake(detector)
-            print("(wake word detected)")
-        skip_wake = False
+    # Awake = in an active conversation (listens to every turn, no wake word needed).
+    # Asleep = dormant, waiting for the wake word. With no wake word configured she
+    # is always awake.
+    awake = detector is None
 
-        raw_text = listen_and_transcribe()
-        if not raw_text:
+    while True:
+        if detector and not awake:
+            print(f"(sleeping — say the wake word to wake me)")
+            _wait_for_wake(detector)
+            awake = True
+            afk.on_active()  # user is back — clear any AFK status
+            _speak("Yes?")
+
+        # While awake with a wake word, time out after SLEEP_AFTER_S of silence and
+        # drop back to sleep. Without a wake word, wait indefinitely.
+        timeout = SLEEP_AFTER_S if detector else None
+        result = listen_and_transcribe(start_timeout_s=timeout)
+
+        if result is None:  # nothing spoken within the window -> idle
+            if detector:
+                print("(no input for a while — going to sleep)")
+                awake = False
+                afk.on_idle()  # mark AFK (skips if you're watching a video)
             continue
 
-        user_input = phase1.process(raw_text).cleaned_text
+        user_input = phase1.process(result).cleaned_text
         if not user_input:
             continue
 
         print(f" You:  {user_input}")
+
         if is_exit_command(user_input):
             _speak("Goodbye!")
             print(" Goodbye!")
             break
 
+        if is_sleep_command(user_input):
+            _speak("Going to sleep. Call me when you need me.")
+            print("(sleeping)")
+            awake = False
+            continue
+
         reply = ask_gpt(user_input)
         print(f" Nova: {reply}")
-        if _speak(reply):
-            print(" (interrupted — listening)")
-            skip_wake = True  # user is mid-sentence; capture it without re-waking
+        _speak(reply)  # barge-in handled inside; we stay awake and loop to listen
