@@ -12,7 +12,10 @@ import sounddevice as sd
 
 import os
 
-from utils.cli import print_banner, is_exit_command, is_sleep_command
+from utils.cli import (
+    print_banner, is_exit_command, is_sleep_command,
+    print_you, print_nova, print_status,
+)
 from brain.gpt_llm import ask_gpt
 from representation import build_phase1_processor
 from stt.recognizer import listen_and_transcribe
@@ -26,6 +29,9 @@ from config import (
     BARGE_RMS_THRESHOLD,
     SLEEP_AFTER_S,
     TTS_BACKEND,
+    USE_PROACTIVE,
+    PROACTIVE_ACTIVITY_HOURS,
+    PROACTIVE_RAM_ALERT,
 )
 
 FRAME = 1280  # 80 ms @ 16 kHz — openWakeWord's expected chunk size
@@ -40,8 +46,9 @@ def _rms(frame_i16: np.ndarray) -> float:
     return float(np.sqrt(np.mean(f * f))) if f.size else 0.0
 
 
-def _wait_for_wake(detector) -> None:
-    """Block until the wake phrase is heard."""
+def _wait_for_wake(detector, monitor=None) -> str:
+    """Block until the wake phrase is heard, or a proactive nudge is queued.
+    Returns 'wake' or 'proactive'."""
     detector.reset()
     with sd.InputStream(
         samplerate=SAMPLE_RATE, device=MIC_INDEX, channels=1,
@@ -49,8 +56,10 @@ def _wait_for_wake(detector) -> None:
     ) as stream:
         while True:
             data, _ = stream.read(FRAME)
+            if monitor is not None and monitor.has_pending():
+                return "proactive"
             if detector.triggered(data[:, 0]):
-                return
+                return "wake"
 
 
 def _speak(text: str) -> bool:
@@ -121,6 +130,32 @@ def run_realtime() -> None:
         print(f"[wake] loading '{WAKE_WORD_MODEL}'...")
         detector = WakeWordDetector(WAKE_WORD_MODEL, WAKE_WORD_THRESHOLD)
 
+    # Proactive monitor: a background thread that queues nudges (reminders,
+    # long-activity, resource alerts) for us to speak. It never touches audio.
+    monitor = None
+    if USE_PROACTIVE:
+        from utils.proactive import ProactiveMonitor
+        monitor = ProactiveMonitor(
+            activity_hours=PROACTIVE_ACTIVITY_HOURS, ram_alert=PROACTIVE_RAM_ALERT
+        )
+        monitor.start()
+
+    # Once-a-day greeting on the first launch of the day.
+    from config import GREET_ON_FIRST_LAUNCH
+    if GREET_ON_FIRST_LAUNCH:
+        from utils.proactive import first_launch_today, daily_greeting
+        if first_launch_today():
+            greeting = daily_greeting()
+            print_nova(greeting)
+            _speak(greeting)
+
+    def _say_proactive() -> None:
+        """Speak any nudges the monitor has queued (main thread = safe for audio)."""
+        if monitor:
+            for msg in monitor.drain():
+                print_nova(msg)
+                _speak(msg)
+
     # Awake = in an active conversation (listens to every turn, no wake word needed).
     # Asleep = dormant, waiting for the wake word. With no wake word configured she
     # is always awake.
@@ -128,41 +163,52 @@ def run_realtime() -> None:
 
     while True:
         if detector and not awake:
-            print(f"(sleeping — say the wake word to wake me)")
-            _wait_for_wake(detector)
+            print_status("asleep — say the wake word to wake me")
+            if _wait_for_wake(detector, monitor) == "proactive":
+                _say_proactive()      # a nudge came due while sleeping — say it, stay asleep
+                continue
             awake = True
             afk.on_active()  # user is back — clear any AFK status
             _speak("Yes?")
 
-        # While awake with a wake word, time out after SLEEP_AFTER_S of silence and
-        # drop back to sleep. Without a wake word, wait indefinitely.
-        timeout = SLEEP_AFTER_S if detector else None
+        _say_proactive()  # deliver any pending nudges before we start listening
+
+        # Awake-with-wake-word: time out after SLEEP_AFTER_S of silence and sleep.
+        # No wake word but proactive on: short tick so nudges can still fire.
+        # Neither: wait indefinitely.
+        if detector:
+            timeout = SLEEP_AFTER_S
+        elif monitor:
+            timeout = 30.0
+        else:
+            timeout = None
         result = listen_and_transcribe(start_timeout_s=timeout)
 
-        if result is None:  # nothing spoken within the window -> idle
+        if result is None:  # nothing spoken within the window
             if detector:
-                print("(no input for a while — going to sleep)")
+                print_status("quiet for a while — dozing off")
                 awake = False
                 afk.on_idle()  # mark AFK (skips if you're watching a video)
+            # no detector: just loop — _say_proactive() at the top delivers nudges
             continue
 
         user_input = phase1.process(result).cleaned_text
         if not user_input:
             continue
 
-        print(f" You:  {user_input}")
+        print_you(user_input)
 
         if is_exit_command(user_input):
             _speak("Goodbye!")
-            print(" Goodbye!")
+            print_status("goodbye")
             break
 
         if is_sleep_command(user_input):
             _speak("Going to sleep. Call me when you need me.")
-            print("(sleeping)")
+            print_status("going to sleep")
             awake = False
             continue
 
         reply = ask_gpt(user_input)
-        print(f" Nova: {reply}")
+        print_nova(reply)
         _speak(reply)  # barge-in handled inside; we stay awake and loop to listen

@@ -91,6 +91,19 @@ BARGE_RMS_THRESHOLD = float(os.getenv("BARGE_RMS_THRESHOLD", "0.06"))
 SLEEP_AFTER_S = float(os.getenv("SLEEP_AFTER_S", "300"))
 
 # ---------------------------------------------------------------------------
+# Proactive Nova — she speaks up on her own (reminders, long-activity nudges,
+# resource alerts). A background monitor detects; the main loop delivers.
+# ---------------------------------------------------------------------------
+USE_PROACTIVE = str(os.getenv("USE_PROACTIVE", "1")) == "1"
+PROACTIVE_ACTIVITY_HOURS = float(os.getenv("PROACTIVE_ACTIVITY_HOURS", "2"))  # nudge after this long on one app
+PROACTIVE_RAM_ALERT = float(os.getenv("PROACTIVE_RAM_ALERT", "93"))           # warn above this RAM %
+GREET_ON_FIRST_LAUNCH = str(os.getenv("GREET_ON_FIRST_LAUNCH", "1")) == "1"   # "good morning" once per day
+
+# Reliability: let qwen3 think before command-like requests (open X, remind me,
+# play...) so it reliably CALLS tools instead of narrating; plain chat stays fast.
+THINK_FOR_COMMANDS = str(os.getenv("THINK_FOR_COMMANDS", "1")) == "1"
+
+# ---------------------------------------------------------------------------
 # Derived / legacy flags (kept for backward compatibility)
 # ---------------------------------------------------------------------------
 USE_CLOUD_LLM = LLM_BACKEND == "openai"

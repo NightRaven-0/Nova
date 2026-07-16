@@ -70,6 +70,35 @@ def is_sleep_command(text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Conversation output — clean, consistent, low-noise
+# ---------------------------------------------------------------------------
+def show_listening() -> None:
+    """Transient 'listening' cue on the current line — overwritten when the
+    user's transcription or the next line appears, so it never stacks up."""
+    _enable_ansi()
+    sys.stdout.write(f"{_c('dim')}   ◦ listening…{_c('reset')}\r")
+    sys.stdout.flush()
+
+
+def clear_line() -> None:
+    sys.stdout.write("\r" + " " * 32 + "\r")
+    sys.stdout.flush()
+
+
+def print_you(text: str) -> None:
+    print(f"{_c('cyan')}   you {_c('reset')}  {text}")
+
+
+def print_nova(text: str) -> None:
+    print(f"{_c('green')}   nova{_c('reset')}  {text}")
+
+
+def print_status(text: str) -> None:
+    """Dim, understated one-liner for sleep/wake/interrupt transitions."""
+    print(f"{_c('dim')}   · {text}{_c('reset')}")
+
+
+# ---------------------------------------------------------------------------
 # Banner
 # ---------------------------------------------------------------------------
 def _on(flag: bool) -> str:

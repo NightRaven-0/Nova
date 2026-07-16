@@ -97,10 +97,18 @@ Speak, and Nova listens → thinks locally → replies aloud. Say **"exit"**, **
 ---
 
 ## What it can do
-- **Actions:** open websites & apps, web search, tell the time, media/volume keys, power control.
-- **Meta:** switch model by voice ("switch to gemma"), list its own skills ("what can you do").
-- **Fun:** vibe check (system stats), Attenborough mode (narrates your screen), sass counter.
+- **Actions:** open websites & installed apps, web search, tell the time, media/volume keys, power control.
+- **Hands-free:** dictation ("type X" — types into whatever app is focused), quick notes
+  ("note that…", "read my notes").
+- **Proactive (speaks up on her own):** reminders & timers ("remind me in 20 minutes to…"),
+  daily recurring reminders ("every day at 18:00…"), long-activity nudges, RAM alerts, a
+  once-a-day greeting. A background monitor detects; the main loop speaks — they never
+  fight over audio. Toggles: `USE_PROACTIVE`, `THINK_FOR_COMMANDS`, etc. in `.env.example`.
+- **Meta:** switch model by voice ("switch to qwen small"), list its own skills ("what can you do").
+- **Fun:** vibe check (system stats), screen roast ("roast me"), sass counter.
 - **Realtime:** wake word + barge-in (talk over Nova to interrupt it).
+- **Reliability:** command-like requests trigger qwen3's thinking mode (`/think` soft switch)
+  so tools are *actually called* instead of narrated; plain chat skips it and stays ~2 s.
 
 **Adding a capability = dropping one file in [`skills/`](skills/)** — each skill self-registers
 via the `@skill` decorator.

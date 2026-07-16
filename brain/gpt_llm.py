@@ -66,16 +66,37 @@ SYSTEM_PROMPT = (
     "you'd say it out loud: plain sentences only. Never use markdown, bullet points, code "
     "blocks, headings, emoji, or emoticons of any kind.\n"
     "You can control the PC with the provided tools: open websites and applications, "
-    "search the web, tell the time, and power actions. Call a tool when the user wants "
-    "something done on the computer; otherwise just answer.\n"
+    "search the web, tell the time, control media, and power actions.\n"
+    "CRITICAL — NEVER FAKE AN ACTION: when the user asks you to open an app or website, "
+    "search, control media, check stats, or anything a tool can do, you MUST call that "
+    "tool. Do NOT reply that you opened or did something unless you actually called the "
+    "tool to do it. Saying 'opening Steam' or 'notepad is open' without calling the tool "
+    "is a serious failure. If no tool fits, say so — don't pretend.\n"
     "CRITICAL: For the current time or date, you MUST call the get_current_time tool and "
     "use its result exactly — never state a time or date from memory, prior turns, or a "
     "guess, because those are wrong. Likewise, use the web search tool for facts you are "
     "not certain of instead of making them up.\n"
     "Speech recognition can be imperfect. If a request seems garbled or ambiguous, ask a "
-    "brief clarifying question instead of guessing.\n"
-    "/no_think"  # qwen3: disable slow chain-of-thought; harmless to other models
+    "brief clarifying question instead of guessing."
 )
+
+# ---------------------------------------------------------------------------
+# Reliability toggle: qwen3 calls tools far more reliably when it thinks first,
+# but thinking is slow. So we flip qwen3's per-message soft switch: /think on
+# command-like utterances (open X, remind me, play, search...), /no_think for
+# plain chat. Controlled by THINK_FOR_COMMANDS in config.
+# ---------------------------------------------------------------------------
+_COMMAND_RE = re.compile(
+    r"\b(open|launch|start|run|close|quit|play|pause|resume|skip|next|previous|"
+    r"volume|mute|unmute|search|google|look up|remind|reminder|timer|alarm|"
+    r"switch (to|model)|use qwen|use gemma|shut ?down|restart|lock|sign out|"
+    r"note|notes|type|dictate|roast|vibe|sass|time|date|screenshot)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_command(text: str) -> bool:
+    return bool(_COMMAND_RE.search(text or ""))
 
 
 class Brain:
@@ -120,6 +141,13 @@ class Brain:
     def ask(self, user_text: str) -> str:
         self.memory.add_user(user_text)
         working = self.memory.build_messages()
+
+        # qwen3 soft switch: think on commands (reliable tool calls), fast chat
+        # otherwise. Replace (don't mutate) the last message so the suffix never
+        # lands in saved history.
+        from config import THINK_FOR_COMMANDS
+        suffix = " /think" if (THINK_FOR_COMMANDS and _is_command(user_text)) else " /no_think"
+        working[-1] = {"role": "user", "content": user_text + suffix}
 
         use_tools = self.model not in self._no_tools
         try:

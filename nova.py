@@ -1,4 +1,4 @@
-from utils.cli import print_banner, is_exit_command
+from utils.cli import print_banner, is_exit_command, print_you, print_nova, print_status
 from stt.recognizer import listen_and_transcribe
 from brain.gpt_llm import ask_gpt
 from tts.voice import speak
@@ -23,15 +23,15 @@ def _simple_loop():
         if not user_input:
             continue
 
-        print(f" You:  {user_input}")
+        print_you(user_input)
 
         if is_exit_command(user_input):
             speak("Goodbye!")
-            print(" Goodbye!")
+            print_status("goodbye")
             break
 
         reply = ask_gpt(user_input)
-        print(f" Nova: {reply}")
+        print_nova(reply)
         speak(reply)
 
 

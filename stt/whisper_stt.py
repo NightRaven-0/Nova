@@ -74,10 +74,12 @@ def transcribe_buffer(audio: np.ndarray) -> str:
 def listen_and_transcribe(start_timeout_s=None):
     """One-shot: wait for an utterance, then transcribe it. Returns None if
     nothing was spoken within `start_timeout_s` seconds (idle)."""
-    print("Listening... speak now.")
+    from utils.cli import show_listening, clear_line
+    show_listening()
     audio = record_utterance(
         samplerate=SAMPLE_RATE, mic_index=MIC_INDEX, start_timeout_s=start_timeout_s
     )
+    clear_line()
     if audio is None:
         return None
     return transcribe_buffer(audio)
