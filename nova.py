@@ -42,6 +42,13 @@ def main():
     if deleted:
         print(f"[logs] removed {deleted} old log file(s), freed {freed/1e6:.1f} MB")
 
+    # Make sure the local brain is reachable before we start (starts Ollama if
+    # it isn't running — common after a reboot/power cut).
+    from config import LLM_BACKEND
+    if LLM_BACKEND == "ollama":
+        from brain.gpt_llm import ensure_ollama
+        ensure_ollama()
+
     # The realtime loop adds wake word and/or barge-in; fall back to the simple
     # loop only when both are disabled.
     if USE_WAKE_WORD or USE_BARGE_IN:

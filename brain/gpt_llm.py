@@ -99,6 +99,59 @@ def _is_command(text: str) -> bool:
     return bool(_COMMAND_RE.search(text or ""))
 
 
+# ---------------------------------------------------------------------------
+# Ollama liveness: after a reboot/power-cut the server often isn't running.
+# Rather than fail with "Connection error", detect it and start it ourselves.
+# ---------------------------------------------------------------------------
+def _looks_like_conn_error(err) -> bool:
+    s = str(err).lower()
+    return any(k in s for k in ("connection", "refused", "max retries",
+                                "failed to establish", "connect", "timed out"))
+
+
+def _ollama_tags_url() -> str:
+    base = OLLAMA_BASE_URL.rstrip("/")
+    base = base[:-3] if base.endswith("/v1") else base
+    return base.rstrip("/") + "/api/tags"
+
+
+def _ollama_up() -> bool:
+    import urllib.request
+    try:
+        urllib.request.urlopen(_ollama_tags_url(), timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def ensure_ollama(verbose: bool = True) -> bool:
+    """Make sure the local Ollama server is running; launch it if not (Windows)."""
+    import os
+    import shutil
+    import subprocess
+    import time
+
+    if _ollama_up():
+        return True
+    exe = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
+    if not os.path.exists(exe):
+        exe = shutil.which("ollama")
+    if not exe:
+        return False
+    if verbose:
+        print("[brain] Ollama isn't running — starting it...")
+    try:
+        subprocess.Popen([exe, "serve"],
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        return False
+    for _ in range(15):
+        time.sleep(1)
+        if _ollama_up():
+            return True
+    return False
+
+
 class Brain:
     def __init__(self):
         if LLM_BACKEND == "ollama":
@@ -140,85 +193,86 @@ class Brain:
 
     def ask(self, user_text: str) -> str:
         self.memory.add_user(user_text)
-        working = self.memory.build_messages()
 
         # qwen3 soft switch: think on commands (reliable tool calls), fast chat
-        # otherwise. Replace (don't mutate) the last message so the suffix never
-        # lands in saved history.
+        # otherwise. Appended per-request, never to saved memory.
         from config import THINK_FOR_COMMANDS
         suffix = " /think" if (THINK_FOR_COMMANDS and _is_command(user_text)) else " /no_think"
-        working[-1] = {"role": "user", "content": user_text + suffix}
 
+        for attempt in range(2):
+            # Rebuild fresh each attempt (memory only holds the user turn on retry).
+            working = self.memory.build_messages()
+            working[-1] = {"role": "user", "content": user_text + suffix}
+            try:
+                return self._complete(working)
+            except Exception as e:
+                # If Ollama simply wasn't running, start it and retry once.
+                if (attempt == 0 and LLM_BACKEND == "ollama"
+                        and _looks_like_conn_error(e) and ensure_ollama()):
+                    continue
+                if LLM_BACKEND == "ollama":
+                    return (f"(Brain error: {e}) — couldn't reach Ollama. Open the Ollama "
+                            f"app or run 'ollama serve', and make sure '{self.model}' is pulled.")
+                return f"(Brain error: {e})"
+
+    def _complete(self, working) -> str:
+        """Run the tool-call loop and return the reply. Raises on API errors so
+        ask() can recover (e.g. start Ollama and retry)."""
         use_tools = self.model not in self._no_tools
-        try:
-            for _ in range(MAX_TOOL_ROUNDS):
-                kwargs = dict(model=self.model, messages=working, temperature=0.3)
-                if use_tools:
-                    kwargs["tools"] = TOOLS
-                    kwargs["tool_choice"] = "auto"
-                try:
-                    resp = self.client.chat.completions.create(**kwargs)
-                except Exception as e:
-                    # Some models (e.g. gemma3) don't support tool-calling — degrade
-                    # to plain chat rather than crashing the whole reply.
-                    if use_tools and "does not support tools" in str(e).lower():
-                        self._no_tools.add(self.model)
-                        use_tools = False
-                        print(f"[brain] '{self.model}' can't call tools — replying without "
-                              "them (open/search/time commands need a tool-capable model "
-                              "like qwen3).")
-                        continue
-                    raise
-                msg = resp.choices[0].message
+        for _ in range(MAX_TOOL_ROUNDS):
+            kwargs = dict(model=self.model, messages=working, temperature=0.3)
+            if use_tools:
+                kwargs["tools"] = TOOLS
+                kwargs["tool_choice"] = "auto"
+            try:
+                resp = self.client.chat.completions.create(**kwargs)
+            except Exception as e:
+                # Some models (e.g. gemma3) don't support tool-calling — degrade
+                # to plain chat rather than crashing the whole reply.
+                if use_tools and "does not support tools" in str(e).lower():
+                    self._no_tools.add(self.model)
+                    use_tools = False
+                    print(f"[brain] '{self.model}' can't call tools — replying without "
+                          "them (open/search/time commands need a tool-capable model "
+                          "like qwen3).")
+                    continue
+                raise
+            msg = resp.choices[0].message
 
-                if not msg.tool_calls:
-                    reply = _clean_reply(msg.content)
-                    self.memory.add_assistant(reply)
-                    self.memory.maybe_summarize()
-                    self.memory.save()
-                    return reply
+            if not msg.tool_calls:
+                reply = _clean_reply(msg.content)
+                self.memory.add_assistant(reply)
+                self.memory.maybe_summarize()
+                self.memory.save()
+                return reply
 
-                # Record the assistant's tool-call request, then run each tool.
-                working.append(
-                    {
-                        "role": "assistant",
-                        "content": msg.content or "",
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in msg.tool_calls
-                        ],
-                    }
-                )
-                for tc in msg.tool_calls:
-                    result = dispatch_tool(tc.function.name, tc.function.arguments)
-                    working.append(
+            # Record the assistant's tool-call request, then run each tool.
+            working.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
                         {
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": result,
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
                         }
-                    )
+                        for tc in msg.tool_calls
+                    ],
+                }
+            )
+            for tc in msg.tool_calls:
+                result = dispatch_tool(tc.function.name, tc.function.arguments)
+                working.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
-            # Ran out of tool rounds.
-            reply = "Sorry, I got a bit tangled up there. Could you say that again?"
-            self.memory.add_assistant(reply)
-            self.memory.save()
-            return reply
-
-        except Exception as e:
-            if LLM_BACKEND == "ollama":
-                return (
-                    f"(Brain error: {e}) — is Ollama running? Start it with 'ollama serve' "
-                    f"and make sure you've pulled '{self.model}'."
-                )
-            return f"(Brain error: {e})"
+        # Ran out of tool rounds.
+        reply = "Sorry, I got a bit tangled up there. Could you say that again?"
+        self.memory.add_assistant(reply)
+        self.memory.save()
+        return reply
 
 
 # Lazily-built singleton so importing this module doesn't connect to the LLM.
