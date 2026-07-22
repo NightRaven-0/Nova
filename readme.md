@@ -4,9 +4,8 @@
 **fully offline** on your PC: it hears you, thinks locally, talks back, and *does things*
 (open apps, search, control media, and more). No cloud, no API keys required.
 
-Pipeline: **Whisper** (speech-to-text) → optional VAE text cleaner → **Ollama** brain
-(local LLM with function-calling + memory) → **Piper** (text-to-speech). Optional wake word
-and barge-in on top.
+Pipeline: **Whisper** (speech-to-text) → **Ollama** brain (local LLM with function-calling
++ memory) → **Piper** (text-to-speech). Optional wake word and barge-in on top.
 
 ---
 
@@ -16,20 +15,20 @@ and barge-in on top.
 - ✅ Speech-to-text — faster-whisper on GPU (Vosk fallback)
 - ✅ Brain — Ollama (`qwen3:8b`) with function-calling tools + persistent, self-summarizing memory
 - ✅ Text-to-speech — Piper (ElevenLabs optional)
-- ✅ Realtime loop — wake word (openWakeWord) + barge-in
-- ✅ Skills framework — drop a file in `skills/` to add a capability (11 skills live)
-- ✅ Extras — voice model-switching, system "vibe check", Attenborough mode, sass counter
-- ✅ Hardened app-launcher (no shell injection); logs auto-purge after 7 days; integration-tested 27/27
-
-- ✅ Custom **"hey Nova"** wake word — trained in WSL (see Troubleshooting); enable with `USE_WAKE_WORD=1` + `WAKE_WORD_MODEL=models/wakeword/hey_nova.onnx`
+- ✅ Realtime loop — wake word (openWakeWord) + barge-in + sleep/wake conversation flow
+- ✅ Custom **"hey Nova"** wake word — trained in WSL; `USE_WAKE_WORD=1` + `WAKE_WORD_MODEL=models/wakeword/hey_nova.onnx`
+- ✅ Skills framework — drop a file in `skills/` to add a capability (19 skills live)
+- ✅ Hands-free — dictation (type into any focused app), quick notes, reminders & timers
+- ✅ Proactive — speaks up on her own: reminders, activity nudges, RAM alerts, daily greeting
+- ✅ Reliability — commands trigger qwen3 thinking so tools are *actually called*, not narrated
+- ✅ Extras — voice model-switching, system "vibe check", screen roast, sass counter, Discord AFK
+- ✅ Hardened app-launcher (no shell injection); logs auto-purge after 7 days
 
 **Planned (see [ROADMAP.md](ROADMAP.md)):**
 - ⬜ Phase 1 — learns from your corrections (RAG)
 - ⬜ Phase 3 — connected services (email, Discord, calendar)
-- ⬜ Phase 4 — computer-use (on-screen agency)
+- ⬜ Phase 4 — computer-use (read the screen, operate GUIs)
 - ⬜ Phase 5 — self-improvement (DPO/LoRA + self-extending skills)
-- ⬜ Phase 6 — proactivity
-- ⬜ More Windows control (typing, clipboard, windows); optional `gemma4:12b` brain
 
 ---
 
@@ -44,7 +43,6 @@ Python 3.10+ then:
 pip install -r requirements.txt
 ```
 - Optional alternative backends (Vosk STT, ElevenLabs TTS, wake word): `pip install -r requirements-optional.txt`
-- Phase-1 VAE text cleaner / training extras: `pip install -r requirements-vae.txt`
 
 ### 2. Ollama (the local LLM brain)
 Install from **https://ollama.com/download**, then pull the default model:
@@ -121,11 +119,11 @@ via the `@skill` decorator.
 | `nova.py` / `realtime.py` | entry point + the listen→think→speak loop |
 | `stt/` | speech-to-text (Whisper, Vosk) |
 | `brain/` | the LLM brain: function-calling loop + conversation memory |
-| `skills/` | capabilities (web, apps, system, media, fun…) — auto-discovered |
+| `skills/` | capabilities (web, apps, system, media, reminders, notes, typing, fun…) — auto-discovered |
 | `tts/` | text-to-speech (Piper, ElevenLabs) |
 | `wake/` | wake-word detection |
-| `representation/` | optional Phase-1 VAE text cleaner |
-| `utils/` | logs (auto-purged after 7 days), system stats, CLI banner |
+| `representation/` | text pre-processing hook (STT → brain); currently a passthrough |
+| `utils/` | proactive monitor, AFK, logs (auto-purged after 7 days), system stats, CLI banner |
 
 Runtime state (`data/*.json`, `logs/`) and downloaded weights (`models/`, `training/`) are
 gitignored and stay on your machine only.

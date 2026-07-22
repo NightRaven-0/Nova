@@ -110,39 +110,3 @@ USE_CLOUD_LLM = LLM_BACKEND == "openai"
 USE_CLOUD_STT = STT_BACKEND == "openai"
 USE_TTS = TTS_BACKEND != "none"
 LOCAL_ONLY_MODE = str(os.getenv("LOCAL_ONLY_MODE", "0")) == "1"
-
-# ---------------------------
-# Phase 1: VAE representation
-# ---------------------------
-
-USE_VAE_TEXT_CLEANER = str(os.getenv("USE_VAE_TEXT_CLEANER", "0")) == "1"
-
-VAE_MODEL_PATH = os.getenv(
-    "VAE_MODEL_PATH",
-    os.path.join("models", "phase1_text_vae.pt"),
-)
-
-VAE_BANK_PATH = os.getenv(
-    "VAE_BANK_PATH",
-    os.path.join("models", "phase1_reconstruction_bank.json"),
-)
-
-VAE_LOG_PATH = os.getenv(
-    "VAE_LOG_PATH",
-    os.path.join("logs", "vae_interactions.jsonl"),
-)
-
-VAE_SENTENCE_MODEL = os.getenv(
-    "VAE_SENTENCE_MODEL",
-    "sentence-transformers/all-MiniLM-L6-v2",
-)
-
-VAE_SIMILARITY_THRESHOLD = float(
-    os.getenv("VAE_SIMILARITY_THRESHOLD", "0.75")
-)
-
-RAW_MATCH_THRESHOLD = float(os.getenv("RAW_MATCH_THRESHOLD", "0.78"))
-RAW_MARGIN_THRESHOLD = float(os.getenv("RAW_MARGIN_THRESHOLD", "0.10"))
-
-VAE_MATCH_THRESHOLD = float(os.getenv("VAE_MATCH_THRESHOLD", "0.75"))
-VAE_MARGIN_THRESHOLD = float(os.getenv("VAE_MARGIN_THRESHOLD", "0.08"))

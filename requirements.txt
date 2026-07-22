@@ -12,4 +12,3 @@ nvidia-cublas-cu12
 nvidia-cudnn-cu12
 
 # Optional backends:        pip install -r requirements-optional.txt
-# Phase-1 VAE / training:    pip install -r requirements-vae.txt
