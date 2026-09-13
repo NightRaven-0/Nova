@@ -36,7 +36,9 @@ if TTS_BACKEND == "elevenlabs" and not ELEVENLABS_API_KEY:
 # ---------------------------------------------------------------------------
 # Local LLM (Ollama, OpenAI-compatible endpoint)
 # ---------------------------------------------------------------------------
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+# 127.0.0.1, not "localhost": on Windows localhost resolves to IPv6 ::1 first, but
+# Ollama listens on IPv4 only, so every request waited ~2 s for the fallback.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:8b")
 OPENAI_LLM_MODEL = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
 
@@ -56,7 +58,7 @@ WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")  # cpu -> "i
 VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")  # ElevenLabs voice *ID* hash, not a name
 PIPER_MODEL_PATH = os.getenv(
     "PIPER_MODEL_PATH",
-    os.path.join("models", "piper", "en_US-amy-medium.onnx"),
+    os.path.join("models", "piper", "en_US-libritts_r-medium.onnx"),
 )
 
 # ---------------------------------------------------------------------------
@@ -102,6 +104,11 @@ GREET_ON_FIRST_LAUNCH = str(os.getenv("GREET_ON_FIRST_LAUNCH", "1")) == "1"   # 
 # Reliability: let qwen3 think before command-like requests (open X, remind me,
 # play...) so it reliably CALLS tools instead of narrating; plain chat stays fast.
 THINK_FOR_COMMANDS = str(os.getenv("THINK_FOR_COMMANDS", "1")) == "1"
+
+# Instant commands: everyday requests (open X, what time is it, pause the music,
+# timers, notes) are matched and run directly with no LLM round-trip, so they're
+# instant and can't be narrated-but-not-done. Anything else still goes to the LLM.
+FAST_COMMANDS = str(os.getenv("FAST_COMMANDS", "1")) == "1"
 
 # ---------------------------------------------------------------------------
 # Derived / legacy flags (kept for backward compatibility)

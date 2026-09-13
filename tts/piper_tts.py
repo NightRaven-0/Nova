@@ -6,20 +6,36 @@
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 import sounddevice as sd
 
 from config import PIPER_MODEL_PATH
 
 _voice = None
+_voice_lock = threading.Lock()  # warm_up() and the first reply may race to load it
 
 
 def _get_voice():
     global _voice
-    if _voice is None:
-        from piper.voice import PiperVoice  # imported lazily so config can load without piper
-        _voice = PiperVoice.load(PIPER_MODEL_PATH)
+    with _voice_lock:
+        if _voice is None:
+            from piper.voice import PiperVoice  # imported lazily so config can load without piper
+            _voice = PiperVoice.load(PIPER_MODEL_PATH)
     return _voice
+
+
+def warm_up() -> None:
+    """Load the voice in the background at startup. The first load takes ~3 s,
+    which would otherwise land on the first thing Nova says."""
+    def load():
+        try:
+            _get_voice()
+        except Exception:
+            pass  # a real problem will surface (and be reported) on the first speak
+
+    threading.Thread(target=load, name="piper-warmup", daemon=True).start()
 
 
 def synthesize(text: str):

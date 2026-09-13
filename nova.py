@@ -1,7 +1,7 @@
-from utils.cli import print_banner, is_exit_command, print_you, print_nova, print_status
+from utils.cli import print_banner, is_exit_command, print_you, print_status, NovaLine
 from stt.recognizer import listen_and_transcribe
-from brain.gpt_llm import ask_gpt
-from tts.voice import speak
+from brain.gpt_llm import ask_gpt_stream
+from tts.speaker import speak, speak_stream
 from representation import build_phase1_processor
 from config import USE_WAKE_WORD, USE_BARGE_IN
 from dotenv import load_dotenv
@@ -30,9 +30,9 @@ def _simple_loop():
             print_status("goodbye")
             break
 
-        reply = ask_gpt(user_input)
-        print_nova(reply)
-        speak(reply)
+        line = NovaLine()
+        speak_stream(ask_gpt_stream(user_input), on_sentence=line)
+        line.end()
 
 
 def main():
@@ -44,10 +44,15 @@ def main():
 
     # Make sure the local brain is reachable before we start (starts Ollama if
     # it isn't running — common after a reboot/power cut).
-    from config import LLM_BACKEND
+    from config import LLM_BACKEND, TTS_BACKEND
     if LLM_BACKEND == "ollama":
-        from brain.gpt_llm import ensure_ollama
+        from brain.gpt_llm import ensure_ollama, warm_up_model
         ensure_ollama()
+        warm_up_model()  # load the model into VRAM now, not on the first question
+
+    if TTS_BACKEND == "piper":
+        from tts.piper_tts import warm_up
+        warm_up()
 
     # The realtime loop adds wake word and/or barge-in; fall back to the simple
     # loop only when both are disabled.

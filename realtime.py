@@ -1,49 +1,34 @@
 # realtime.py
 # Layer 3: the realtime loop that wraps capture -> brain -> speak with optional
 # wake word (Nova only engages when called) and barge-in (talk over Nova to stop
-# it). Controlled by USE_WAKE_WORD / USE_BARGE_IN in config.
+# it). Replies stream, so Nova starts talking after the first sentence.
+# Controlled by USE_WAKE_WORD / USE_BARGE_IN in config.
 
 from __future__ import annotations
 
-import time
-
-import numpy as np
 import sounddevice as sd
-
-import os
 
 from utils.cli import (
     print_banner, is_exit_command, is_sleep_command,
-    print_you, print_nova, print_status,
+    print_you, print_nova, print_status, NovaLine,
 )
-from brain.gpt_llm import ask_gpt
+from brain.gpt_llm import ask_gpt_stream, cancel_reply, warm_up_model
 from representation import build_phase1_processor
 from stt.recognizer import listen_and_transcribe
+from tts.speaker import speak, speak_stream
 from config import (
     SAMPLE_RATE,
     MIC_INDEX,
     USE_WAKE_WORD,
-    USE_BARGE_IN,
     WAKE_WORD_MODEL,
     WAKE_WORD_THRESHOLD,
-    BARGE_RMS_THRESHOLD,
     SLEEP_AFTER_S,
-    TTS_BACKEND,
     USE_PROACTIVE,
     PROACTIVE_ACTIVITY_HOURS,
     PROACTIVE_RAM_ALERT,
 )
 
 FRAME = 1280  # 80 ms @ 16 kHz — openWakeWord's expected chunk size
-_BARGE_MIN_FRAMES = 4      # ~320 ms of sustained speech before we count it as barge-in
-_BARGE_GRACE_SEC = 0.35   # ignore the very start (playback ramp-up / mic settling)
-_BARGE_DEBUG = os.getenv("BARGE_DEBUG") == "1"  # print peak mic level to help tune the threshold
-_barge_warned = False     # only warn once if the monitor mic can't open
-
-
-def _rms(frame_i16: np.ndarray) -> float:
-    f = frame_i16.astype(np.float32) / 32768.0
-    return float(np.sqrt(np.mean(f * f))) if f.size else 0.0
 
 
 def _wait_for_wake(detector, monitor=None) -> str:
@@ -60,63 +45,6 @@ def _wait_for_wake(detector, monitor=None) -> str:
                 return "proactive"
             if detector.triggered(data[:, 0]):
                 return "wake"
-
-
-def _speak(text: str) -> bool:
-    """Speak `text`. With barge-in enabled (Piper backend only), stop early if the
-    user talks over Nova. Returns True if it was interrupted."""
-    if TTS_BACKEND != "piper" or not USE_BARGE_IN:
-        from tts.voice import speak
-        speak(text)
-        return False
-
-    from tts.piper_tts import synthesize, play_async, stop_playback
-
-    samples, rate = synthesize(text)
-    if samples.size == 0:
-        return False
-
-    global _barge_warned
-    play_async(samples, rate)
-    start = time.time()
-    deadline = start + len(samples) / float(rate)
-
-    loud = 0
-    peak = 0.0
-    try:
-        with sd.InputStream(
-            samplerate=SAMPLE_RATE, device=MIC_INDEX, channels=1,
-            dtype="int16", blocksize=FRAME,
-        ) as mic:
-            while time.time() < deadline:
-                data, _ = mic.read(FRAME)
-                level = _rms(data[:, 0])
-                peak = max(peak, level)
-                # Ignore the first fraction of a second (playback ramp-up / mic settling).
-                if time.time() - start < _BARGE_GRACE_SEC:
-                    continue
-                if level >= BARGE_RMS_THRESHOLD:
-                    loud += 1
-                    if loud >= _BARGE_MIN_FRAMES:
-                        stop_playback()
-                        if _BARGE_DEBUG:
-                            print(f"   [barge-in fired: peak {peak:.3f} >= {BARGE_RMS_THRESHOLD}]")
-                        return True
-                else:
-                    loud = 0
-        if _BARGE_DEBUG:
-            print(f"   [barge-in: peak mic level {peak:.3f} (threshold {BARGE_RMS_THRESHOLD}) "
-                  f"— lower BARGE_RMS_THRESHOLD if you spoke and it didn't stop]")
-    except Exception as e:
-        if not _barge_warned:
-            print(f"   [barge-in disabled: couldn't open the monitor mic during playback ({e}). "
-                  f"Set USE_BARGE_IN=0 to silence this, or use headphones.]")
-            _barge_warned = True
-        sd.wait()
-        return False
-
-    sd.wait()
-    return False
 
 
 def run_realtime() -> None:
@@ -147,14 +75,14 @@ def run_realtime() -> None:
         if first_launch_today():
             greeting = daily_greeting()
             print_nova(greeting)
-            _speak(greeting)
+            speak(greeting)
 
     def _say_proactive() -> None:
         """Speak any nudges the monitor has queued (main thread = safe for audio)."""
         if monitor:
             for msg in monitor.drain():
                 print_nova(msg)
-                _speak(msg)
+                speak(msg)
 
     # Awake = in an active conversation (listens to every turn, no wake word needed).
     # Asleep = dormant, waiting for the wake word. With no wake word configured she
@@ -168,8 +96,11 @@ def run_realtime() -> None:
                 _say_proactive()      # a nudge came due while sleeping — say it, stay asleep
                 continue
             awake = True
+            # Ollama unloads the model after ~5 idle minutes (about when she dozes
+            # off), so start reloading it now, while you're still talking.
+            warm_up_model()
             afk.on_active()  # user is back — clear any AFK status
-            _speak("Yes?")
+            speak("Yes?")
 
         _say_proactive()  # deliver any pending nudges before we start listening
 
@@ -199,16 +130,22 @@ def run_realtime() -> None:
         print_you(user_input)
 
         if is_exit_command(user_input):
-            _speak("Goodbye!")
+            speak("Goodbye!")
             print_status("goodbye")
             break
 
         if is_sleep_command(user_input):
-            _speak("Going to sleep. Call me when you need me.")
+            speak("Going to sleep. Call me when you need me.")
             print_status("going to sleep")
             awake = False
             continue
 
-        reply = ask_gpt(user_input)
-        print_nova(reply)
-        _speak(reply)  # barge-in handled inside; we stay awake and loop to listen
+        # Stream the reply: each sentence is spoken (and printed) as soon as the
+        # brain finishes it. Talking over her stops the voice and the generation.
+        line = NovaLine()
+        interrupted = speak_stream(
+            ask_gpt_stream(user_input), on_sentence=line, on_interrupt=cancel_reply
+        )
+        line.end()
+        if interrupted:
+            print_status("interrupted — go ahead")

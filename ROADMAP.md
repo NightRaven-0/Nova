@@ -15,7 +15,7 @@ The full offline voice loop, on your hardware.
 - Wake word (openWakeWord) + barge-in realtime loop.
 **Done when:** you can hold a spoken conversation and it can open sites/apps. ✅
 
-## Phase 1 — Nova learns from you  (RAG correction memory) 🔨 NEXT
+## Phase 1 — Nova learns from you  (RAG correction memory) ⬜
 The cheapest, safest "it learns" win — no model training.
 - Capture feedback every turn (what you said → what it did → was it right?).
 - When you correct it, embed the situation + correction (reuse the existing sentence-transformer).
@@ -28,6 +28,15 @@ The hardcoded `tools.py` is now an extensible **skills** framework — the base 
 - ✅ Hardened the `shell=True` app-launch — no more shell-injection (allowlisted URIs + PATH-resolved exe, shell=False).
 - ✅ Windows media/volume keys (`media_control`). Typing, clipboard, and window management are now easy drop-in skills (next).
 **Done:** adding a capability = dropping one file in `skills/`.
+
+## Snappiness & reliability 🔨 (built 2026-09-13; brain live-tested, listening test pending)
+Make her feel instant, and make commands dependable.
+- Streaming replies: sentences are spoken as the model writes them; barge-in cancels generation too.
+- Instant commands (`brain/fastpath.py`): everyday commands run their skill directly, no LLM round-trip.
+- Thinking only for command-like requests (`THINK_FOR_COMMANDS`, via `reasoning_effort`); plain chat stays fast.
+- Talk to Ollama on `127.0.0.1`, not `localhost` (saved ~2 s per request); preload qwen + Piper at startup and on wake.
+- Measured: chat's first sentence 3.6 s → ~0.3 s; a tool command 8 s → ~4 s; instant commands ~0 s.
+**Done when:** first words come about a second after you stop talking, and "open Steam" always opens Steam.
 
 ## Phase 3 — Connected services (the "do things for me" leap) ⬜
 Real integrations, built as Phase-2 skills.

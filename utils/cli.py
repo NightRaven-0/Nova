@@ -98,6 +98,28 @@ def print_status(text: str) -> None:
     print(f"{_c('dim')}   · {text}{_c('reset')}")
 
 
+class NovaLine:
+    """Prints a streamed reply on one 'nova' line, a sentence at a time, in step
+    with the voice. Call it with each sentence, then end()."""
+
+    def __init__(self):
+        self.started = False
+
+    def __call__(self, text: str) -> None:
+        if self.started:
+            sys.stdout.write(" " + text)
+        else:
+            sys.stdout.write(f"{_c('green')}   nova{_c('reset')}  {text}")
+            self.started = True
+        sys.stdout.flush()
+
+    def end(self) -> None:
+        if self.started:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            self.started = False
+
+
 # ---------------------------------------------------------------------------
 # Banner
 # ---------------------------------------------------------------------------

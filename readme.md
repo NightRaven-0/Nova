@@ -16,6 +16,8 @@ Pipeline: **Whisper** (speech-to-text) → **Ollama** brain (local LLM with func
 - ✅ Brain — Ollama (`qwen3:8b`) with function-calling tools + persistent, self-summarizing memory
 - ✅ Text-to-speech — Piper (ElevenLabs optional)
 - ✅ Realtime loop — wake word (openWakeWord) + barge-in + sleep/wake conversation flow
+- 🔨 Streaming replies — chat's first sentence is ready in ~0.3 s (measured); voice playback + barge-in awaiting a listening test
+- 🔨 Instant commands — open apps/sites, time, media, timers, notes skip the LLM: instant, never faked (awaiting a spoken test)
 - ✅ Custom **"hey Nova"** wake word — trained in WSL; `USE_WAKE_WORD=1` + `WAKE_WORD_MODEL=models/wakeword/hey_nova.onnx`
 - ✅ Skills framework — drop a file in `skills/` to add a capability (19 skills live)
 - ✅ Hands-free — dictation (type into any focused app), quick notes, reminders & timers
@@ -49,14 +51,17 @@ Install from **https://ollama.com/download**, then pull the default model:
 ```bash
 ollama pull qwen3:8b
 ```
-Ollama serves an OpenAI-compatible API at `http://localhost:11434`. To use a different model,
-set `LOCAL_LLM_MODEL` in `.env` (e.g. `gemma4:12b` — see https://ollama.com/library).
+Ollama serves an OpenAI-compatible API at `http://127.0.0.1:11434` (Nova uses the IP, not
+`localhost` — see Troubleshooting). To use a different model,
+set `LOCAL_LLM_MODEL` in `.env` (e.g. `qwen3:4b` for speed — see https://ollama.com/library). The
+model **must support tool-calling** (qwen3 does; gemma3 doesn't, so it can't open apps or tell the time).
 
 ### 3. Piper voice (text-to-speech)
 Download a voice from **https://huggingface.co/rhasspy/piper-voices** and place the two files
-in `models/piper/`. The default Nova expects is **en_US-amy-medium**:
-- [en_US-amy-medium.onnx](https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx)
-- [en_US-amy-medium.onnx.json](https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json)
+in `models/piper/`. The default Nova expects is **en_US-libritts_r-medium** (the most natural-sounding
+Piper voice):
+- [en_US-libritts_r-medium.onnx](https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx)
+- [en_US-libritts_r-medium.onnx.json](https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx.json)
 
 Override the path with `PIPER_MODEL_PATH` in `.env` to use a different voice.
 
@@ -96,6 +101,11 @@ Speak, and Nova listens → thinks locally → replies aloud. Say **"exit"**, **
 
 ## What it can do
 - **Actions:** open websites & installed apps, web search, tell the time, media/volume keys, power control.
+- **Instant commands:** everyday requests ("open steam", "what's the time", "pause the music",
+  "timer for 5 minutes", "note that…", "lock my pc") are matched in `brain/fastpath.py` and run
+  straight through their skill with no LLM round-trip, so they're instant and can't be faked.
+  Matching is strict (whole utterance, and an app must really resolve); anything else goes to the
+  LLM as normal. Toggle: `FAST_COMMANDS`.
 - **Hands-free:** dictation ("type X" — types into whatever app is focused), quick notes
   ("note that…", "read my notes").
 - **Proactive (speaks up on her own):** reminders & timers ("remind me in 20 minutes to…"),
@@ -104,9 +114,11 @@ Speak, and Nova listens → thinks locally → replies aloud. Say **"exit"**, **
   fight over audio. Toggles: `USE_PROACTIVE`, `THINK_FOR_COMMANDS`, etc. in `.env.example`.
 - **Meta:** switch model by voice ("switch to qwen small"), list its own skills ("what can you do").
 - **Fun:** vibe check (system stats), screen roast ("roast me"), sass counter.
-- **Realtime:** wake word + barge-in (talk over Nova to interrupt it).
-- **Reliability:** command-like requests trigger qwen3's thinking mode (`/think` soft switch)
-  so tools are *actually called* instead of narrated; plain chat skips it and stays ~2 s.
+- **Realtime:** wake word + barge-in (talk over Nova to interrupt it). Replies **stream**: each
+  sentence is spoken as soon as the model finishes writing it, and barging in also stops the model
+  generating the rest.
+- **Reliability:** command-like requests let qwen3 think first so tools are *actually called*
+  instead of narrated; plain chat turns thinking off (`reasoning_effort: "none"`) and stays fast.
 
 **Adding a capability = dropping one file in [`skills/`](skills/)** — each skill self-registers
 via the `@skill` decorator.
@@ -118,9 +130,9 @@ via the `@skill` decorator.
 |---|---|
 | `nova.py` / `realtime.py` | entry point + the listen→think→speak loop |
 | `stt/` | speech-to-text (Whisper, Vosk) |
-| `brain/` | the LLM brain: function-calling loop + conversation memory |
+| `brain/` | the LLM brain: streamed function-calling loop, instant-command fast path, conversation memory |
 | `skills/` | capabilities (web, apps, system, media, reminders, notes, typing, fun…) — auto-discovered |
-| `tts/` | text-to-speech (Piper, ElevenLabs) |
+| `tts/` | text-to-speech: `speaker.py` (streamed playback + barge-in), Piper, ElevenLabs |
 | `wake/` | wake-word detection |
 | `representation/` | text pre-processing hook (STT → brain); currently a passthrough |
 | `utils/` | proactive monitor, AFK, logs (auto-purged after 7 days), system stats, CLI banner |
@@ -165,19 +177,40 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
   (handles LFS + integrity), not a raw HTTP GET.
 
 ### Brain (Ollama / qwen3)
-- **Nova reads its reasoning aloud** — qwen3 emits `<think>…</think>`. Fix: strip those blocks
-  before speaking (`_strip_think` in `brain/gpt_llm.py`).
+- **Nova reads its reasoning aloud** — qwen3 emits `<think>…</think>`. Fix: hide those blocks
+  before speaking. With streaming, a tag can arrive split across chunks (`<thi` + `nk>`), so
+  `SentenceStream` in `brain/gpt_llm.py` holds back a possible partial tag instead of regex-ing
+  the finished text.
 - **Replies take ~20 s** — it's *not* your CPU or network (everything's local). Two causes:
   (1) qwen3 *thinks* (chain-of-thought) before every answer, even after we hide it — pure
-  latency. Fix: disable it with `/no_think` in the system prompt (done in `gpt_llm.py`).
+  latency. Fix: no thinking for plain chat, thinking only for command-like requests
+  (`THINK_FOR_COMMANDS`), and everyday commands skip the LLM entirely (`FAST_COMMANDS`).
+  **Gotcha:** qwen3's `/no_think` soft switch (text appended to the message) is silently
+  **ignored by current Ollama** — 0.30.9 still streamed ~1,000 characters of hidden reasoning per
+  chat reply with it. `think: false` in the OpenAI-compatible request is ignored too. What works
+  is the request option **`reasoning_effort: "none"`** (sent via `extra_body`): hidden reasoning
+  dropped to zero. Together with the `127.0.0.1` fix below, chat's first sentence now arrives in
+  ~0.3 s (was ~3.6 s), and a command that calls a tool dropped from ~8 s to ~4 s.
   (2) The **first** reply after startup loads the 5 GB model into VRAM (~10 s, one-time);
   later turns are warm (~2 s plain, ~4 s with a tool call). **Gaming at the same time** is the
   other big factor — the game and the LLM fight over the same VRAM/GPU, and if VRAM is full
   Ollama spills layers to the CPU (much slower). For snappy replies, don't game simultaneously,
   or `switch to` a smaller model while gaming.
+- **Every reply has a ~2 s dead spot, even tiny ones** — on Windows, `localhost` resolves to IPv6
+  `::1` first, but Ollama only listens on IPv4 `127.0.0.1`, so every request sat through a ~2 s
+  failed IPv6 attempt before falling back (measured: 2.06 s via `localhost` vs 0.001 s via
+  `127.0.0.1`). Ollama's own timings showed each reply needed only ~0.6 s of real work; the rest
+  was this. A command that uses a tool makes two requests, so it paid twice. Fix:
+  `OLLAMA_BASE_URL=http://127.0.0.1:11434/v1` (now the default in `config.py`).
 - **Nova uses emoji** even though the prompt says not to — models leak them anyway. Fix: a hard
-  emoji/pictograph strip on the final text (`_clean_reply` + `_EMOJI_RE` in `gpt_llm.py`), plus
-  a firmer prompt rule.
+  emoji/pictograph (and markdown `*`/`#`) strip on every spoken sentence (`_speakable` +
+  `_EMOJI_RE` in `gpt_llm.py`), plus a firmer prompt rule.
+- **She says "opening Steam" but nothing opens** — two separate bugs. (1) The launcher only knew
+  exes on `PATH`, so installed apps like Steam/Discord/YouTube Music never resolved; fixed by
+  resolving Start Menu shortcuts (`skills/apps.py`). (2) qwen3 often *narrates* a tool action
+  without calling the tool (worse with `/no_think`). Fixes: a "NEVER FAKE AN ACTION" prompt rule,
+  thinking for command-like requests, and **instant commands** (`brain/fastpath.py`), which run
+  everyday commands directly so the model never gets the chance to fake them.
 - **Wrong / made-up time or date** (e.g. "11:32 AM on Sunday, June 14" when it's really late
   June) — qwen3 **didn't call the `get_current_time` tool**, it *hallucinated* a time. Worse,
   that wrong answer got saved to `data/memory.json`, so it parroted the same lie on every later
@@ -189,12 +222,21 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
   haven't pulled. Fix: `ollama pull <model>` or change `.env`.
 
 ### Voice & interaction (robotic voice, barge-in, exit words)
-- **Voice sounds robotic** — that's the Piper voice model, not a bug. Swap `amy-medium` for a
-  more natural one — **`en_US-libritts_r-medium`** (LibriTTS-R, the most human-like) or
-  `en_US-hfc_female-medium`. Download the `.onnx` + `.onnx.json` from
+- **Voice sounds robotic** — that's the Piper voice model, not a bug. The original `amy-medium` was
+  replaced by **`en_US-libritts_r-medium`** (LibriTTS-R, the most human-like; now the default).
+  Another good option is `en_US-hfc_female-medium`. Download the `.onnx` + `.onnx.json` from
   [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) into `models/piper/` (use
   `huggingface_hub`, not a plain fetch — a raw download truncates the model → `INVALID_PROTOBUF`)
   and point `PIPER_MODEL_PATH` at it in `.env`.
+- **Long silence before she says anything** — the old loop waited for the *whole* reply from
+  qwen, then synthesized *all* of it with Piper, and only then played it. Fix: stream it. The brain
+  yields each sentence as soon as it's complete; `tts/speaker.py` synthesizes it in a background
+  thread and plays it the moment the previous sentence ends (it asks PortAudio whether the clip is
+  still playing, because a wall-clock timer clips each sentence's tail by the output latency). The
+  mic is watched for the whole reply with one start-up grace period, so barge-in carries across
+  sentence boundaries, and it also cancels generation (`cancel_reply`). Only the part she actually
+  said is saved to memory. Memory summarization moved to a background thread so it never delays
+  her voice.
 - **Barge-in won't stop her when you talk over her** — the detector is a mic-energy threshold, so
   it's setup-dependent. Run once with `BARGE_DEBUG=1` to print your peak mic level each reply,
   then set `BARGE_RMS_THRESHOLD` in `.env` just under it. On speakers the mic also hears Nova's
