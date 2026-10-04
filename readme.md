@@ -17,6 +17,7 @@ Pipeline: **Whisper** (speech-to-text) → **Ollama** brain (local LLM with func
 - ✅ Text-to-speech — Piper (ElevenLabs optional)
 - ✅ Realtime loop — wake word (openWakeWord) + barge-in + sleep/wake conversation flow
 - 🔨 Streaming replies — chat's first sentence is ready in ~0.3 s (measured); voice playback + barge-in awaiting a listening test
+- 🔨 Model ladder — runs the biggest brain that fits the VRAM actually free, steps down while you game
 - 🔨 Instant commands — open apps/sites, time, media, timers, notes skip the LLM: instant, never faked (awaiting a spoken test)
 - ✅ Custom **"hey Nova"** wake word — trained in WSL; `USE_WAKE_WORD=1` + `WAKE_WORD_MODEL=models/wakeword/hey_nova.onnx`
 - ✅ Skills framework — drop a file in `skills/` to add a capability (19 skills live)
@@ -112,6 +113,11 @@ Speak, and Nova listens → thinks locally → replies aloud. Say **"exit"**, **
   daily recurring reminders ("every day at 18:00…"), long-activity nudges, RAM alerts, a
   once-a-day greeting. A background monitor detects; the main loop speaks — they never
   fight over audio. Toggles: `USE_PROACTIVE`, `THINK_FOR_COMMANDS`, etc. in `.env.example`.
+- **Model ladder:** Nova checks free VRAM between turns and runs the biggest brain that fits
+  — e.g. `qwen3.6:35b-a3b` when the GPU is idle, stepping down to `qwen3:14b` / `qwen3:8b` /
+  `qwen3:4b` when a game takes the VRAM, and handing the VRAM back when she dozes off. Configure
+  with `MODEL_LADDER` ("tag:min_free_gb", biggest first) and `USE_MODEL_LADDER`. Say "use the big
+  model" to pin one by hand, or "go back to automatic" to hand control back.
 - **Meta:** switch model by voice ("switch to qwen small"), list its own skills ("what can you do").
 - **Fun:** vibe check (system stats), screen roast ("roast me"), sass counter.
 - **Realtime:** wake word + barge-in (talk over Nova to interrupt it). Replies **stream**: each
@@ -130,11 +136,12 @@ via the `@skill` decorator.
 |---|---|
 | `nova.py` / `realtime.py` | entry point + the listen→think→speak loop |
 | `stt/` | speech-to-text (Whisper, Vosk) |
-| `brain/` | the LLM brain: streamed function-calling loop, instant-command fast path, conversation memory |
+| `brain/` | the LLM brain: streamed function-calling loop, instant-command fast path, VRAM model ladder, conversation memory |
 | `skills/` | capabilities (web, apps, system, media, reminders, notes, typing, fun…) — auto-discovered |
 | `tts/` | text-to-speech: `speaker.py` (streamed playback + barge-in), Piper, ElevenLabs |
 | `wake/` | wake-word detection |
 | `representation/` | text pre-processing hook (STT → brain); currently a passthrough |
+| `scripts/` | tools you run by hand: wake-word training, `bench_models.py` (model comparison) |
 | `utils/` | proactive monitor, AFK, logs (auto-purged after 7 days), system stats, CLI banner |
 
 Runtime state (`data/*.json`, `logs/`) and downloaded weights (`models/`, `training/`) are
@@ -196,6 +203,13 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
   other big factor — the game and the LLM fight over the same VRAM/GPU, and if VRAM is full
   Ollama spills layers to the CPU (much slower). For snappy replies, don't game simultaneously,
   or `switch to` a smaller model while gaming.
+- **Conversation gets forgetful in a long chat** — Ollama gives the model a **4,096-token**
+  context by default, and Nova's system prompt + 19 tool schemas already use ~1,900 of it, so a
+  long conversation starts dropping its oldest turns. **Gotcha:** the OpenAI-compatible endpoint
+  **ignores `num_ctx`** — sent as `options.num_ctx` or as a bare `num_ctx`, the loaded context
+  stayed 4096 (check with `ollama ps`). Only two things work: set `OLLAMA_CONTEXT_LENGTH` for the
+  Ollama server (affects everything it serves), or `ollama create` a derived model with
+  `PARAMETER num_ctx 8192` (no extra disk, reuses the same blobs) and point Nova at that tag.
 - **Every reply has a ~2 s dead spot, even tiny ones** — on Windows, `localhost` resolves to IPv6
   `::1` first, but Ollama only listens on IPv4 `127.0.0.1`, so every request sat through a ~2 s
   failed IPv6 attempt before falling back (measured: 2.06 s via `localhost` vs 0.001 s via

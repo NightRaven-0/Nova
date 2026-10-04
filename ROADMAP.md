@@ -35,6 +35,8 @@ Make her feel instant, and make commands dependable.
 - Instant commands (`brain/fastpath.py`): everyday commands run their skill directly, no LLM round-trip.
 - Thinking only for command-like requests (`THINK_FOR_COMMANDS`, via `reasoning_effort`); plain chat stays fast.
 - Talk to Ollama on `127.0.0.1`, not `localhost` (saved ~2 s per request); preload qwen + Piper at startup and on wake.
+- Model ladder (`brain/model_ladder.py`): biggest brain that fits free VRAM, steps down while gaming.
+- `scripts/bench_models.py`: measures first-sentence latency, tok/s, and whether commands really call their tool.
 - Measured: chat's first sentence 3.6 s → ~0.3 s; a tool command 8 s → ~4 s; instant commands ~0 s.
 **Done when:** first words come about a second after you stop talking, and "open Steam" always opens Steam.
 
