@@ -141,7 +141,7 @@ via the `@skill` decorator.
 | `tts/` | text-to-speech: `speaker.py` (streamed playback + barge-in), Piper, ElevenLabs |
 | `wake/` | wake-word detection |
 | `representation/` | text pre-processing hook (STT → brain); currently a passthrough |
-| `scripts/` | tools you run by hand: wake-word training, `bench_models.py` (model comparison) |
+| `scripts/` | tools you run by hand: wake-word training, `bench_models.py` (model comparison), `fetch_model.py` (resumable model download) |
 | `utils/` | proactive monitor, AFK, logs (auto-purged after 7 days), system stats, CLI banner |
 
 Runtime state (`data/*.json`, `logs/`) and downloaded weights (`models/`, `training/`) are
@@ -265,6 +265,22 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
   (safe to delete to reclaim space; complete blobs have no `-partial` suffix).
 
 ### Large downloads on a flaky/slow link
+- **`ollama pull` never finishes on a slow, drop-prone link** — it splits the blob into 16 parallel
+  parts but only writes a part's progress to disk when that whole **~580 MB part completes**. At
+  ~1 MB/s shared across 16 parts, each part needs hours, so any fatal exit restarts from zero:
+  measured here as **11 attempts, 0 MB of durable progress** (`ollama ps` shows nothing; the
+  `blobs/*-partial-N` JSON files all stay at `"Completed":0`). The server log gives it away:
+  `part 14 stalled; retrying`.
+  **Fix: `python scripts/fetch_model.py ollama qwen3:14b`** — it downloads the weights blob from
+  Ollama's own CDN with 8 parallel range requests, flushes progress every 5 s, verifies the
+  sha256, and drops the blob into Ollama's store under the name Ollama expects. Then
+  `ollama pull qwen3:14b` finds the big blob present and only fetches the few KB of
+  template/params/manifest. Measured: **1.0-1.1 MB/s with all 8 streams live**, and a dropped
+  connection costs seconds instead of hours.
+- **Don't reach for Hugging Face as the workaround** — it resumes properly but routes through its
+  Xet backend, which managed only **76-250 KB/s** here, and parallel range requests to it mostly
+  time out (1 of 4 streams got data). `fetch_model.py hf <repo> <file>` exists for provenance
+  reasons, but Ollama's CDN is ~4x faster on this connection.
 - **HF feature file stalls / `httpx.ReadTimeout`** — HuggingFace's Xet backend and the default
   10s read-timeout choke on big files over a poor connection. Fixes that worked:
   `HF_HUB_DISABLE_XET=1`, `HF_HUB_DOWNLOAD_TIMEOUT=120`, and ultimately a **byte-range

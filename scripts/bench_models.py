@@ -120,6 +120,24 @@ def run_turn(client, model, text, think):
             "tool": tool, "chars": chars}
 
 
+def throughput(model):
+    """True generation speed, from Ollama's own eval counters. (Dividing an
+    estimated token count by the post-first-token window, as the streaming path
+    would, is pure noise on short replies.) Also reports how long Ollama takes
+    to read a realistic Nova-sized prompt, which is what you actually wait for."""
+    body = {"model": model, "stream": False, "think": False,
+            "options": {"temperature": 0.3},
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                         {"role": "user", "content": "Write about 200 words describing a "
+                                                     "thunderstorm rolling over a coastal town."}]}
+    r = api("/api/chat", body)
+    ns = 1e9
+    gen, gen_s = r.get("eval_count", 0), r.get("eval_duration", 1) / ns
+    return {"tok_s": gen / max(gen_s, 1e-6), "gen_tokens": gen,
+            "prompt_tokens": r.get("prompt_eval_count", 0),
+            "prompt_s": r.get("prompt_eval_duration", 0) / ns}
+
+
 def bench(model, repeats):
     client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
     print()
@@ -133,6 +151,10 @@ def bench(model, repeats):
     spill = "" if size <= vram + 0.05 else "  ({:.1f} GB spilled to RAM)".format(size - vram)
     print("  loaded in {:.1f}s | {:.1f} GB total, {:.1f} GB in VRAM{} | context {}".format(
         load, size, vram, spill, ps.get("context_length", "?")))
+
+    tp = throughput(model)
+    print("  speed: {:.0f} tok/s generating, and {:.2f}s to read a {}-token prompt".format(
+        tp["tok_s"], tp["prompt_s"], tp["prompt_tokens"]))
 
     chat_runs = [run_turn(client, model, c, think=False) for c in CHATS]
     fs = [r["first_sentence"] for r in chat_runs if r["first_sentence"]]
@@ -164,7 +186,7 @@ def bench(model, repeats):
 
     api("/api/generate", {"model": model, "keep_alive": 0})  # free the VRAM
     return {"model": model, "load_s": load, "size_gb": size, "vram_gb": vram,
-            "context": ps.get("context_length"), "chat": chat_runs,
+            "context": ps.get("context_length"), "throughput": tp, "chat": chat_runs,
             "commands": {"hits": hits, "attempts": attempts, "runs": cmd_runs,
                          "misses": misses}}
 
@@ -205,7 +227,7 @@ def main():
         cfs = [c["first_sentence"] or c["total"] for c in r["commands"]["runs"]]
         print("  {:22s} {:8.2f}s {:6.0f} {:7.2f}s {:4d}/{:<4d} {:5.1f} GB".format(
             r["model"], statistics.median(fs),
-            statistics.median([c["tok_s"] for c in r["chat"]]),
+            r["throughput"]["tok_s"],
             statistics.median(cfs), r["commands"]["hits"], r["commands"]["attempts"],
             r["vram_gb"]))
     print("  saved " + out)
