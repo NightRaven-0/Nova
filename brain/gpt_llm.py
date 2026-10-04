@@ -544,13 +544,21 @@ def warm_up_model() -> None:
 # Friendly spoken names -> Ollama tags. Both are tool-capable; gemma3 was
 # dropped because it can't call tools.
 MODEL_ALIASES = {
+    "biggest": "qwen3.6:35b-a3b",
+    "big": "qwen3.6:35b-a3b",
+    "best": "qwen3.6:35b-a3b",
+    "smartest": "qwen3.6:35b-a3b",
+    "qwen 3.6": "qwen3.6:35b-a3b",
+    "medium": "qwen3:14b",
+    "mid": "qwen3:14b",
+    "qwen 14": "qwen3:14b",
     "qwen": "qwen3:8b",
     "qwen 3": "qwen3:8b",
     "qwen three": "qwen3:8b",
-    "big": "qwen3:8b",
-    "qwen small": "qwen3:4b",
     "small": "qwen3:4b",
+    "qwen small": "qwen3:4b",
     "fast": "qwen3:4b",
+    "fastest": "qwen3:4b",
 }
 
 

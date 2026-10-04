@@ -139,7 +139,7 @@ def unpin() -> None:
     _state["pinned"] = False
 
 
-def apply(force: bool = False, on_switch=None) -> Optional[str]:
+def apply(force: bool = False, on_switch=None, warm: bool = True) -> Optional[str]:
     """Switch to the best-fitting model if that isn't the one we're on.
     Returns the tag now in use, or None if the ladder is off/not applicable."""
     if not (USE_MODEL_LADDER and LLM_BACKEND == "ollama") or _state["pinned"]:
@@ -169,7 +169,8 @@ def apply(force: bool = False, on_switch=None) -> Optional[str]:
     _state.update(current=want, last_switch=now)
     if old and old != want:
         unload(old)      # free the VRAM the old one was holding
-    warm_up_model()      # start loading the new one in the background
+    if warm:
+        warm_up_model()  # start loading the new one in the background
     if on_switch:
         on_switch(old, want)
     return want

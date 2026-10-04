@@ -13,6 +13,7 @@ from utils.cli import (
     print_you, print_nova, print_status, NovaLine,
 )
 from brain.gpt_llm import ask_gpt_stream, cancel_reply, warm_up_model
+from brain import model_ladder
 from representation import build_phase1_processor
 from stt.recognizer import listen_and_transcribe
 from tts.speaker import speak, speak_stream
@@ -84,6 +85,15 @@ def run_realtime() -> None:
                 print_nova(msg)
                 speak(msg)
 
+    def _fit_model(force: bool = False, warm: bool = True) -> None:
+        """Run the biggest brain the free VRAM allows (steps down while gaming)."""
+        model_ladder.apply(
+            force=force, warm=warm,
+            on_switch=lambda old, new: print_status(f"brain: {old} -> {new}"),
+        )
+
+    _fit_model(force=True)
+
     # Awake = in an active conversation (listens to every turn, no wake word needed).
     # Asleep = dormant, waiting for the wake word. With no wake word configured she
     # is always awake.
@@ -98,6 +108,7 @@ def run_realtime() -> None:
             awake = True
             # Ollama unloads the model after ~5 idle minutes (about when she dozes
             # off), so start reloading it now, while you're still talking.
+            _fit_model(force=True)
             warm_up_model()
             afk.on_active()  # user is back — clear any AFK status
             speak("Yes?")
@@ -119,6 +130,8 @@ def run_realtime() -> None:
             if detector:
                 print_status("quiet for a while — dozing off")
                 awake = False
+                model_ladder.unpin()
+                _fit_model(force=True, warm=False)  # give the GPU back
                 afk.on_idle()  # mark AFK (skips if you're watching a video)
             # no detector: just loop — _say_proactive() at the top delivers nudges
             continue
@@ -138,6 +151,8 @@ def run_realtime() -> None:
             speak("Going to sleep. Call me when you need me.")
             print_status("going to sleep")
             awake = False
+            model_ladder.unpin()
+            _fit_model(force=True, warm=False)
             continue
 
         # Stream the reply: each sentence is spoken (and printed) as soon as the
@@ -149,3 +164,4 @@ def run_realtime() -> None:
         line.end()
         if interrupted:
             print_status("interrupted — go ahead")
+        _fit_model()  # between turns: adapt if the GPU got busy (rate-limited)

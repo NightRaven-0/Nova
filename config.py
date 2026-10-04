@@ -111,6 +111,21 @@ THINK_FOR_COMMANDS = str(os.getenv("THINK_FOR_COMMANDS", "1")) == "1"
 FAST_COMMANDS = str(os.getenv("FAST_COMMANDS", "1")) == "1"
 
 # ---------------------------------------------------------------------------
+# Model ladder — run the biggest brain that fits the VRAM actually free, and
+# step down when something else (a game) wants the GPU.
+# Format: "tag:min_free_gb", biggest first. min_free_gb is the least free VRAM
+# at which that model is worth running, NOT its file size: qwen3.6:35b-a3b is a
+# mixture-of-experts model (~3B params active per token), so it stays usable
+# with part of it in system RAM, while dense models want to fit entirely.
+# ---------------------------------------------------------------------------
+USE_MODEL_LADDER = str(os.getenv("USE_MODEL_LADDER", "1")) == "1"
+MODEL_LADDER = os.getenv(
+    "MODEL_LADDER",
+    "qwen3.6:35b-a3b:12,qwen3:14b:10.5,qwen3:8b:6.5,qwen3:4b:3.5",
+)
+MODEL_LADDER_CHECK_S = float(os.getenv("MODEL_LADDER_CHECK_S", "60"))
+
+# ---------------------------------------------------------------------------
 # Derived / legacy flags (kept for backward compatibility)
 # ---------------------------------------------------------------------------
 USE_CLOUD_LLM = LLM_BACKEND == "openai"
