@@ -110,6 +110,14 @@ THINK_FOR_COMMANDS = str(os.getenv("THINK_FOR_COMMANDS", "1")) == "1"
 # instant and can't be narrated-but-not-done. Anything else still goes to the LLM.
 FAST_COMMANDS = str(os.getenv("FAST_COMMANDS", "1")) == "1"
 
+# Which models actually need thinking to call tools reliably. Measured with
+# scripts/bench_models.py on 2026-10-04 (24 command attempts each):
+#   qwen3:14b  24/24 without thinking in 0.44s   (24/24 with, 2.28s)  -> no need
+#   qwen3:8b   22/24 without thinking in 0.33s   (24/24 with, 1.50s)  -> worth it
+# So thinking is now opt-in per model instead of for every command.
+THINK_MODELS = {m.strip() for m in os.getenv("THINK_MODELS", "qwen3:8b,qwen3:4b").split(",")
+                if m.strip()}
+
 # ---------------------------------------------------------------------------
 # Model ladder — run the biggest brain that fits the VRAM actually free, and
 # step down when something else (a game) wants the GPU.
@@ -121,7 +129,10 @@ FAST_COMMANDS = str(os.getenv("FAST_COMMANDS", "1")) == "1"
 USE_MODEL_LADDER = str(os.getenv("USE_MODEL_LADDER", "1")) == "1"
 MODEL_LADDER = os.getenv(
     "MODEL_LADDER",
-    "qwen3.6:35b-a3b:12,qwen3:14b:10.5,qwen3:8b:6.5,qwen3:4b:3.5",
+    # qwen3.6-nova:35b-a3b is downloaded and runs, but Ollama 0.30.9 crashes loading it
+    # unreliably AND cannot parse qwen3.6 tool calls, so it is left out of the ladder
+    # until Ollama is updated. Add "qwen3.6-nova:35b-a3b:13," in front to re-enable.
+    "qwen3:14b:10.5,qwen3:8b:6.5,qwen3:4b:3.5",
 )
 MODEL_LADDER_CHECK_S = float(os.getenv("MODEL_LADDER_CHECK_S", "60"))
 

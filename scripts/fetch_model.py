@@ -217,22 +217,28 @@ def from_ollama(tag: str, streams: int, models_dir: str) -> bool:
     if not layers:
         print("no layers in the manifest for " + tag)
         return False
-    weights = layers[0]
-    digest = weights["digest"].split(":")[-1]
-    blobs = os.path.join(models_dir, "blobs")
-    out = os.path.join(blobs, "sha256-" + digest)
 
-    print("{} -> {}".format(tag, out), flush=True)
-    other = sum(l.get("size", 0) for l in layers[1:])
-    print("  weights layer is {} of {} total; the other {} layer(s) ({}) are left to "
-          "`ollama pull`".format(human(weights["size"]), human(weights["size"] + other),
-                                 len(layers) - 1, human(other)), flush=True)
-    url = "{}/{}/blobs/sha256:{}".format(REGISTRY, name, digest)
-    ok = download(url, out, weights["size"], digest, streams)
-    if ok:
-        print("\nnow run:  ollama pull {}".format(tag), flush=True)
-        print("(it will see this blob and only fetch the small remaining layers)", flush=True)
-    return ok
+    # Grab every layer big enough to hurt if it had to restart. Some models have
+    # more than one: qwen3.6:35b-a3b ships a 21.7 GB weights layer AND a 902 MB
+    # second layer, and skipping the smaller one left `ollama pull` to fetch it
+    # on the fragile path.
+    big = [l for l in layers if l.get("size", 0) >= 50 * 1024 * 1024]
+    small = [l for l in layers if l not in big]
+    blobs = os.path.join(models_dir, "blobs")
+    print("{}: {} layer(s) >= 50 MB to fetch here, {} small layer(s) ({}) left to "
+          "`ollama pull`".format(tag, len(big), len(small),
+                                 human(sum(l.get("size", 0) for l in small))), flush=True)
+
+    for i, layer in enumerate(big, 1):
+        digest = layer["digest"].split(":")[-1]
+        out = os.path.join(blobs, "sha256-" + digest)
+        print("[{}/{}] {} -> {}".format(i, len(big), human(layer["size"]), out), flush=True)
+        url = "{}/{}/blobs/sha256:{}".format(REGISTRY, name, digest)
+        if not download(url, out, layer["size"], digest, streams):
+            return False
+    print("\nnow run:  ollama pull {}".format(tag), flush=True)
+    print("(it will see these blobs and only fetch the small remaining layers)", flush=True)
+    return True
 
 
 def from_hf(repo: str, filename: str, streams: int, dest: str) -> bool:

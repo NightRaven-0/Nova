@@ -19,6 +19,7 @@ from config import (
     MEMORY_MAX_TURNS,
     MEMORY_SUMMARIZE_AFTER,
     THINK_FOR_COMMANDS,
+    THINK_MODELS,
     FAST_COMMANDS,
 )
 from brain.tools import TOOLS, dispatch_tool
@@ -204,8 +205,13 @@ SYSTEM_PROMPT = (
     "is a serious failure. If no tool fits, say so — don't pretend.\n"
     "CRITICAL: For the current time or date, you MUST call the get_current_time tool and "
     "use its result exactly — never state a time or date from memory, prior turns, or a "
-    "guess, because those are wrong. Likewise, use the web search tool for facts you are "
-    "not certain of instead of making them up.\n"
+    "guess, because those are wrong.\n"
+    "Answer general-knowledge questions yourself, from what you know, and do NOT search "
+    "the web for them. Only use the web search tool when the user asks you to look "
+    "something up, or when the answer genuinely depends on live information you cannot "
+    "know: today's news, weather, prices, scores, or a specific website. Searching opens "
+    "a browser window, so it is intrusive. When you are unsure, give your best answer and "
+    "say you are not certain.\n"
     "Speech recognition can be imperfect. If a request seems garbled or ambiguous, ask a "
     "brief clarifying question instead of guessing."
 )
@@ -274,8 +280,14 @@ def ensure_ollama(verbose: bool = True) -> bool:
         return False
     if verbose:
         print("[brain] Ollama isn't running — starting it...")
+    # Flash attention OFF: Ollama 0.30.9's CUDA flash-attention kernel crashes
+    # loading qwen3.6-class MoE models (ggml_cuda_flash_attn_ext_mma_f16_case ->
+    # "shared object initialization failed" -> llama-server dies). Measured cost
+    # of disabling it on qwen3:8b/14b: ~1% throughput. Only applies when Nova
+    # starts the server itself; the Ollama tray app won't pick this up.
+    env = dict(os.environ, OLLAMA_FLASH_ATTENTION="0")
     try:
-        subprocess.Popen([exe, "serve"],
+        subprocess.Popen([exe, "serve"], env=env,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception:
         return False
@@ -374,9 +386,11 @@ class Brain:
                 return
 
             self.memory.add_user(user_text)
-            # Think before command-like requests (reliable tool calls); plain chat
-            # skips thinking and answers fast.
-            think = THINK_FOR_COMMANDS and _is_command(user_text)
+            # Think before command-like requests, but only for models that need it
+            # to call tools reliably (see THINK_MODELS in config). Thinking costs
+            # ~5x the latency, and qwen3:14b is 24/24 on tool calls without it.
+            think = (THINK_FOR_COMMANDS and _is_command(user_text)
+                     and self.model in THINK_MODELS)
 
             spoken, completed = [], False
             try:
@@ -544,11 +558,13 @@ def warm_up_model() -> None:
 # Friendly spoken names -> Ollama tags. Both are tool-capable; gemma3 was
 # dropped because it can't call tools.
 MODEL_ALIASES = {
-    "biggest": "qwen3.6:35b-a3b",
-    "big": "qwen3.6:35b-a3b",
-    "best": "qwen3.6:35b-a3b",
-    "smartest": "qwen3.6:35b-a3b",
-    "qwen 3.6": "qwen3.6:35b-a3b",
+    # the -nova variants are derived models with num_gpu/num_ctx baked in
+    # (Ollama's OpenAI endpoint ignores per-request options)
+    "biggest": "qwen3.6-nova:35b-a3b",
+    "big": "qwen3.6-nova:35b-a3b",
+    "best": "qwen3.6-nova:35b-a3b",
+    "smartest": "qwen3.6-nova:35b-a3b",
+    "qwen 3.6": "qwen3.6-nova:35b-a3b",
     "medium": "qwen3:14b",
     "mid": "qwen3:14b",
     "qwen 14": "qwen3:14b",

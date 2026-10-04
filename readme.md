@@ -123,8 +123,10 @@ Speak, and Nova listens → thinks locally → replies aloud. Say **"exit"**, **
 - **Realtime:** wake word + barge-in (talk over Nova to interrupt it). Replies **stream**: each
   sentence is spoken as soon as the model finishes writing it, and barging in also stops the model
   generating the rest.
-- **Reliability:** command-like requests let qwen3 think first so tools are *actually called*
-  instead of narrated; plain chat turns thinking off (`reasoning_effort: "none"`) and stays fast.
+- **Reliability:** thinking is enabled per model (`THINK_MODELS`), only where it's needed to
+  call tools reliably. Measured on 24 command attempts: `qwen3:14b` scores 24/24 *without*
+  thinking in 0.44 s (2.28 s with it), while `qwen3:8b` drops to 22/24 without. Plain chat
+  never thinks (`reasoning_effort: "none"`).
 
 **Adding a capability = dropping one file in [`skills/`](skills/)** — each skill self-registers
 via the `@skill` decorator.
@@ -210,6 +212,21 @@ that dropped old APIs, or from Linux-only assumptions in upstream tooling.
   stayed 4096 (check with `ollama ps`). Only two things work: set `OLLAMA_CONTEXT_LENGTH` for the
   Ollama server (affects everything it serves), or `ollama create` a derived model with
   `PARAMETER num_ctx 8192` (no extra disk, reuses the same blobs) and point Nova at that tag.
+- **A big MoE model crashes on load: `CUDA error: shared object initialization failed`** —
+  Ollama 0.30.9's CUDA **flash-attention** kernel dies on qwen3.6-class MoE models (the log names
+  `ggml_cuda_flash_attn_ext_mma_f16_case`, then `llama-server terminated ... 0xc0000409`). It is
+  NOT an unsupported architecture — CPU-only (`"options": {"num_gpu": 0}`) runs fine. Fix: start
+  the server with **`OLLAMA_FLASH_ATTENTION=0`**. Measured cost on qwen3:8b/14b: ~1% throughput
+  (118 vs 119 tok/s). Nova sets it when it starts Ollama itself; the tray app needs the user env
+  var. Related red herring: while the kernel was crashing, the server logged `qwen tool call
+  parsing failed / XML syntax error`, which looked like a parser incompatibility but was just
+  garbled output from the dying kernel — with flash attention off, tool calls parse 8/8.
+- **Ollama offloads too much of an MoE and crashes** — the scheduler tried to put **41 of 42
+  layers (~22 GB)** of a 22.3 GB model into 14.7 GB of free VRAM. Fix: cap it yourself. Per-request
+  `options` are ignored by the OpenAI endpoint, so bake it into a derived model — a Modelfile
+  with `FROM qwen3.6:35b-a3b`, `PARAMETER num_gpu 24`, `PARAMETER num_ctx 8192`, then
+  `ollama create qwen3.6-nova:35b-a3b -f Modelfile`. Costs no extra disk (same blobs) and is the
+  same trick that raises the 4K context.
 - **Every reply has a ~2 s dead spot, even tiny ones** — on Windows, `localhost` resolves to IPv6
   `::1` first, but Ollama only listens on IPv4 `127.0.0.1`, so every request sat through a ~2 s
   failed IPv6 attempt before falling back (measured: 2.06 s via `localhost` vs 0.001 s via

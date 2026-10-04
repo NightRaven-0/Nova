@@ -18,6 +18,7 @@ sets a real reminder.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import statistics
@@ -27,6 +28,9 @@ import urllib.request
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Unbuffered prints: a benchmark that takes minutes must show progress as it goes.
+print = functools.partial(print, flush=True)
 
 from openai import OpenAI
 
@@ -120,6 +124,10 @@ def run_turn(client, model, text, think):
             "tool": tool, "chars": chars}
 
 
+def med(xs, default=float("nan")):
+    return statistics.median(xs) if xs else default
+
+
 def throughput(model):
     """True generation speed, from Ollama's own eval counters. (Dividing an
     estimated token count by the post-first-token window, as the streaming path
@@ -152,17 +160,22 @@ def bench(model, repeats):
     print("  loaded in {:.1f}s | {:.1f} GB total, {:.1f} GB in VRAM{} | context {}".format(
         load, size, vram, spill, ps.get("context_length", "?")))
 
+    run_turn(client, model, "hi", think=False)  # one-off graph warmup, not measured
     tp = throughput(model)
     print("  speed: {:.0f} tok/s generating, and {:.2f}s to read a {}-token prompt".format(
         tp["tok_s"], tp["prompt_s"], tp["prompt_tokens"]))
 
     chat_runs = [run_turn(client, model, c, think=False) for c in CHATS]
     fs = [r["first_sentence"] for r in chat_runs if r["first_sentence"]]
-    print("  chat: first sentence {:.2f}s median ({:.2f}-{:.2f}s), ~{:.0f} tok/s, "
-          "reasoning {} chars".format(
-              statistics.median(fs), min(fs), max(fs),
-              statistics.median([r["tok_s"] for r in chat_runs]),
-              sum(r["reasoning"] for r in chat_runs)))
+    searched = [r["tool"] for r in chat_runs if r["tool"]]
+    if fs:
+        print("  chat: first sentence {:.2f}s median ({:.2f}-{:.2f}s), reasoning {} chars".format(
+            med(fs), min(fs), max(fs), sum(r["reasoning"] for r in chat_runs)))
+    else:
+        print("  chat: no spoken answer at all - every prompt became a tool call", flush=True)
+    if searched:
+        print("  WARNING: {}/{} plain chat questions triggered a tool instead of an answer: {}"
+              .format(len(searched), len(chat_runs), sorted(set(searched))))
 
     hits = 0
     misses = []
@@ -225,10 +238,11 @@ def main():
     for r in results:
         fs = [c["first_sentence"] for c in r["chat"] if c["first_sentence"]]
         cfs = [c["first_sentence"] or c["total"] for c in r["commands"]["runs"]]
-        print("  {:22s} {:8.2f}s {:6.0f} {:7.2f}s {:4d}/{:<4d} {:5.1f} GB".format(
-            r["model"], statistics.median(fs),
+        first = "{:7.2f}s".format(med(fs)) if fs else "    n/a"
+        print("  {:22s} {:>9s} {:6.0f} {:7.2f}s {:4d}/{:<4d} {:5.1f} GB".format(
+            r["model"], first,
             r["throughput"]["tok_s"],
-            statistics.median(cfs), r["commands"]["hits"], r["commands"]["attempts"],
+            med(cfs), r["commands"]["hits"], r["commands"]["attempts"],
             r["vram_gb"]))
     print("  saved " + out)
 
